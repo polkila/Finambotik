@@ -7,6 +7,6 @@
         "stop_buy": false,
         "stop_sell": false,
         "stop_loss": -99,
-        "take_profit": 99
+        "take_profit": 10
     }
 }

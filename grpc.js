@@ -478,7 +478,7 @@ function GetOrders(){
 		"include_matched": true,
 	},
 	function(err, response){
-		console.log('GetOrders err', JSON.stringify(err, null, 4));
+		//console.log('GetOrders err', JSON.stringify(err, null, 4));
 		//console.log('GetOrders response', JSON.stringify(response, null, 4));
 		redisClient.publish('fbots-cmd', JSON.stringify({event: 'GetOrders', error: err, response: response.orders}));
 	});

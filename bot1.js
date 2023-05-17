@@ -722,6 +722,11 @@ function update_indicators(candle){
 	if (ticker.candles[candle.interval]){
 		const vars = data_indicators[candle.securityCode][candle.interval];
 
+		const prev_ema200 = vars.ema200 && vars.ema200.EMAvalue;
+		const prev_ema12 = vars.ema12 && vars.ema12.EMAvalue;
+		const prev_ema26 = vars.ema26 && vars.ema26.EMAvalue;
+		const prev_macd_slow = vars.ema26 && vars.ema26.EMAvalue;
+
 		// EMA 200
 		const ema200 = new func.EMA(ticker.candles[candle.interval][0], vars.ema200);
 		ema200.addPoint(candle.timestamp, candle.c);
@@ -744,24 +749,32 @@ function update_indicators(candle){
 			ema9.addPoint(candle.timestamp, macd_fast);
 			vars.ema9 = ema9.getVars();
 			const macd_slow = vars.ema9.EMAvalue;
-		}
 
-
-				// buy
-				if (0){
-					vars.last_signal = 'buy';
-					vars.last_signal_at = func.dateYmdHis();
-					if (!stop_buy && !ticker.stop_buy){
-						ticker_buy(ticker.securityBoard, ticker.securityCode, ticker.buy_price, candle.interval, false);
-					}else{
-						msg(
-							'Сигнал на *покупку* #'+ticker.symbol+' *'+ticker.buy_price+'* '+candle.interval+'\n'+
-							'Выключена покупка'
-						);
+			if (macd_slow && prev_ema200 && vars.ema200.EMAvalue){ // посчитались MacD и медленная Ema
+				if (prev_ema200 < vars.ema200.EMAvalue){
+					const price_close = (candle.c-vars.ema200.EMAvalue)/vars.ema200.EMAvalue*100;
+					if (prev_ema12 && prev_ema26 && prev_macd_slow){
+						const prev_macd_fast = prev_ema12-prev_ema26;
+						if (prev_macd_fast < prev_macd_slow && macd_fast > macd_slow && macd_fast < 0 && macd_slow < 0){
+							if (price_close <= ticker.candles[candle.interval][1]){
+								// buy
+								vars.last_signal = 'buy';
+								vars.last_signal_at = func.dateYmdHis();
+								if (!stop_buy && !ticker.stop_buy){
+									ticker_buy(ticker.securityBoard, ticker.securityCode, ticker.buy_price, candle.interval, false);
+								}else{
+									msg(
+										'Сигнал на *покупку* #'+ticker.symbol+' *'+ticker.buy_price+'* '+candle.interval+'\n'+
+										'Выключена покупка'
+									);
+								}
+							}
+						}
 					}
 				}
+
 				// sell
-				if (0){
+				if (0){ // здесь можно придумать условия, при выполнении которых возникнет сигнал на продажу; а пока что продажа происходит по СЛ и ТП
 					vars.last_signal = 'sell';
 					vars.last_signal_at = func.dateYmdHis();
 					if (!stop_sell && !ticker.stop_sell){
@@ -773,6 +786,8 @@ function update_indicators(candle){
 						);
 					}
 				}
+			}
+		}
 	}
 }
 
@@ -789,17 +804,21 @@ function event_orderbook(data){
 		ticker.buy_price = data.payload.asks[0].price;
 		ticker.sell_price = data.payload.bids[0].price;
 
-		const dateObj = new Date(), minutes = dateObj.getMinutes();
+		if (!stop_sell && !ticker.stop_sell){
+			ticker_sell(ticker.securityBoard, ticker.securityCode, ticker.sell_price, null, false);
+		}
+
+		const dateObj = new Date(), hours = dateObj.getHours(), minutes = dateObj.getMinutes();
 		dateObj.setSeconds(0, 0);
 		const time = dateObj.toISOString();
 		Object.keys(ticker.candles).forEach(function(interval){
 			const vars = data_indicators[data.payload.security_code] && data_indicators[data.payload.security_code][interval];
 			const interval_minutes = func.interval_to_minutes(interval);
-			if (vars && minutes%interval_minutes===0 && vars.last_candle.time < time){
+			if (vars && (hours*60+minutes)%interval_minutes===0 && vars.last_candle.time < time){
 				vars.last_candle = {securityCode: data.payload.security_code, interval: interval, c: func.round((ticker.buy_price+ticker.sell_price)/2, ticker.decimals), time: time, timestamp: dateObj.getTime()};
 				update_indicators(vars.last_candle);
-				console.log(time);
-				console.log('new candle', vars.last_candle);
+				//console.log(time);
+				//console.log('new candle', vars.last_candle);
 			}
 		});
 	}

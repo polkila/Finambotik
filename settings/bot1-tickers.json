@@ -6,7 +6,7 @@
         "currency": "RUB",
         "lotSize": 10,
         "decimals": 2,
-        "minStep": 0,
+        "minStep": 1,
         "candles": {
             "15min": [
                 200,
@@ -15,17 +15,16 @@
         },
         "quantity": 0,
         "buy_price": 230.58,
-        "sell_price": 230.57,
-        "buy_tries": 10
+        "sell_price": 230.57
     },
     "MAGN": {
         "symbol": "MAGN",
         "securityBoard": "TQBR",
         "securityCode": "MAGN",
         "currency": "RUB",
-        "lotSize": 1,
-        "decimals": 2,
-        "minStep": 0,
+        "lotSize": 10,
+        "decimals": 3,
+        "minStep": 5,
         "candles": {
             "15min": [
                 200,
@@ -42,8 +41,8 @@
         "securityCode": "CHMF",
         "currency": "RUB",
         "lotSize": 1,
-        "decimals": 2,
-        "minStep": 0,
+        "decimals": 1,
+        "minStep": 2,
         "candles": {
             "15min": [
                 200,
@@ -51,7 +50,7 @@
             ]
         },
         "quantity": 0,
-        "buy_price": 1010.4000000000001,
-        "sell_price": 1009.8000000000001
+        "buy_price": 1010,
+        "sell_price": 1009
     }
 }

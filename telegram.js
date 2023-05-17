@@ -69,9 +69,7 @@ bot.on(/^\s*(help|portfolio|p|resubscribe|settings)\s*$/i, function(msg, props){
 // show 1%
 // tp 1
 // sl 1
-// short 1
-// short 0
-bot.on(/^\s*(show|tp|sl|short)\s*(-?[0-9.,]+)%?\s*$/i, function(msg, props){
+bot.on(/^\s*(show|tp|sl)\s*(-?[0-9.,]+)%?\s*$/i, function(msg, props){
 	let prefix = get_prefix(msg.chat.id);
 	if (prefix){
 		const cmd = props.match[1].toLowerCase();

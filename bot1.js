@@ -28,7 +28,6 @@ let stop_buy = false;
 let stop_sell = false;
 let stop_loss = -99;
 let take_profit = 99;
-let short_enabled = false;
 
 const func = require('./func');
 const fs = require('fs');
@@ -141,7 +140,6 @@ function settings_save(cb){
 			stop_sell: stop_sell,
 			stop_loss: stop_loss,
 			take_profit: take_profit,
-			short_enabled: short_enabled,
 		}
 	};
 	fs.writeFile('settings/'+redis_prefix+'-settings.json', JSON.stringify(settings, null, 4), function(err){
@@ -206,7 +204,6 @@ function settings_load(cb){
 					stop_sell = vars[key].stop_sell;
 					stop_loss = vars[key].stop_loss;
 					take_profit = vars[key].take_profit;
-					short_enabled = vars[key].short_enabled;
 					console.log('Loaded global settings', vars[key]);
 				}
 			});
@@ -1159,7 +1156,7 @@ redisSub.on('message', function(channel, data){
 						// sell *
 						// sell usd
 						// sell RUB
-						if (['*', 'usd', 'RUB'].includes(data.option)){
+						if (['*', 'usd', 'rub'].includes(data.option.toLowerCase())){
 							msg('Продаю '+data.option.toUpperCase()+' позиции');
 							Object.keys(portfolio).forEach(function(symbol){ // найти все купленные инструменты
 								if (portfolio[symbol].positions){
@@ -1200,16 +1197,6 @@ redisSub.on('message', function(channel, data){
 									}
 								}
 							});
-						}
-					}
-
-					// включить/выключить короткие позиции
-					// short [float]
-					if (data.cmd==='short'){
-						if (data.value || data.value===0){
-							let txt = func.markdown_escape('old short_enabled '+short_enabled);
-							short_enabled = !!data.value;
-							msg(txt+'\n'+func.markdown_escape('new short_enabled '+short_enabled));
 						}
 					}
 

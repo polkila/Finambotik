@@ -1,0 +1,28 @@
+{
+    "SBER": {
+        "positions": {
+            "1684355289285": {
+                "clientOrderId": 1684355289285,
+                "securityBoard": "TQBR",
+                "securityCode": "SBER",
+                "time": 1684355289285,
+                "date": "2023-05-17 23:28:09",
+                "interval": "15min",
+                "lots": 1,
+                "quantity": 10,
+                "buy_price": 229,
+                "stop_loss": 2.29,
+                "buy_in_progress": 1684355289285,
+                "comment": "",
+                "buy_comment": "",
+                "transaction_id": 38922172
+            }
+        }
+    },
+    "MAGN": {
+        "positions": {}
+    },
+    "CHMF": {
+        "positions": {}
+    }
+}

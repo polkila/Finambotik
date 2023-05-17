@@ -1,0 +1,57 @@
+{
+    "SBER": {
+        "symbol": "SBER",
+        "securityBoard": "TQBR",
+        "securityCode": "SBER",
+        "currency": "RUB",
+        "lotSize": 10,
+        "decimals": 2,
+        "minStep": 0,
+        "candles": {
+            "15min": [
+                200,
+                1.2
+            ]
+        },
+        "quantity": 0,
+        "buy_price": 230.58,
+        "sell_price": 230.57,
+        "buy_tries": 10
+    },
+    "MAGN": {
+        "symbol": "MAGN",
+        "securityBoard": "TQBR",
+        "securityCode": "MAGN",
+        "currency": "RUB",
+        "lotSize": 1,
+        "decimals": 2,
+        "minStep": 0,
+        "candles": {
+            "15min": [
+                200,
+                1.3
+            ]
+        },
+        "quantity": 0,
+        "buy_price": 39.635,
+        "sell_price": 39.63
+    },
+    "CHMF": {
+        "symbol": "CHMF",
+        "securityBoard": "TQBR",
+        "securityCode": "CHMF",
+        "currency": "RUB",
+        "lotSize": 1,
+        "decimals": 2,
+        "minStep": 0,
+        "candles": {
+            "15min": [
+                200,
+                1.2
+            ]
+        },
+        "quantity": 0,
+        "buy_price": 1010.4000000000001,
+        "sell_price": 1009.8000000000001
+    }
+}

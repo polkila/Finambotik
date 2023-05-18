@@ -904,27 +904,38 @@ redisSub.on('message', function(channel, data){
 			if (channel===redis_prefix+'-cmd'){
 				console.log('Redis', channel, data);
 
-				if (data.symbol && data.symbol!=='USD' && data.symbol!=='RUB' && data.symbol!=='*'){ // операция с инструментом
+				if (data.symbol && data.symbol!=='*'){ // операция с инструментом
 
 					const symbols = data.symbol.trim().split(/\s+/);
 
 					// добавить инструмент
 					// add ticker [symbol]
 					if (data.cmd==='add ticker'){
-						symbols.forEach(function(symbol){
-							if (1){
-								const codes = symbol.split('.');
-								const add_ticker = {symbol: codes[1]};
-								add_ticker.lotSize = 1;
-								add_ticker.currency = 'RUB';
-								add_ticker.minStep = 1;
-								add_ticker.added = Date.now();
-
-								watch_tickers[codes[1]] = add_ticker;
-								ticker_init(codes[0], codes[1]);
-								msg('Добавил #'+add_ticker.symbol+' '+codes[1]);
+						func.rest('get', '/api/v1/securities', {url: account.api_url, token: account.api_token, qs:{}}, function(err, req_body){
+							if (!err && req_body && req_body.data && req_body.data.securities){
+								let added_count = 0;
+								req_body.data.securities.forEach(function(ticker){
+								    if (symbols.includes(ticker.board+'.'+ticker.code)){
+									    const add_ticker = {symbol: ticker.code};
+									    add_ticker.securityCode = ticker.code;
+									    add_ticker.securityBoard = ticker.board;
+									    add_ticker.name = ticker.shortName;
+									    add_ticker.lotSize = ticker.lotSize;
+									    add_ticker.currency = ticker.currency==='RUR' ? 'RUB' : ticker.currency;
+									    add_ticker.minStep = ticker.minStep;
+									    add_ticker.candles = {'15min': [200,1.2]};
+									    add_ticker.added = Date.now();
+									    watch_tickers[ticker.code] = add_ticker;
+									    ticker_init(ticker.board, ticker.code);
+									    msg('Добавил #'+ticker.code+' '+ticker.shortName);
+									    added_count++;
+								    }
+								});
+								if (!added_count){
+									msg('Инструмент не найден');
+								}
 							}else{
-								msg('Инструмент не найден');
+								console.log('err', err, 'req_body', req_body);
 							}
 						});
 					}

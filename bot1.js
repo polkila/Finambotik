@@ -310,6 +310,7 @@ function msg_portfolio(){
 			msg(func.round(totalSum, 2)+' RUB' +
 				'\nДоступно: '+balance.RUB +' RUB'+
 				(positions.length?'\n\nПозиции:\n'+positions.join('\n'):'') +
+				(!positions.length?'\n\nНет открытых позиций':'') +
 				((disabled_list.length)?'\n\nВыключено:\n'+disabled_list.join('\n'):'') +
 				''
 			);
@@ -424,19 +425,17 @@ function ticker_buy(securityBoard, securityCode, price, interval, force_buy, com
 		if (market_is_open(ticker) || force_buy){
 			if (!portfolio[securityCode]) portfolio[securityCode] = {symbol: ticker.symbol, positions: {}};
 
-			let buy_price, price2, price3;
+			let buy_price;
 			if (price){ // цена указана вручную
 				buy_price = price;
 			}else{
 				buy_price = ticker.buy_price;
 			}
-			if (ticker.decimals){
-				buy_price = func.round(buy_price, ticker.decimals);
-			}
+			buy_price = func.round(buy_price, ticker.decimals);
 
 			// подсчитать количество и лоты
 			const max_pos = ticker.currency==='RUB' ? max_position.RUB : max_position.USD;
-			let lots = Math.floor( max_pos / (ticker.lotSize * buy_price));
+			let lots = Math.floor( max_pos / (ticker.lotSize * buy_price)) || 1;
 			let quantity = lots * ticker.lotSize;
 
 			// Проверка баланса
@@ -530,6 +529,7 @@ function msg_bought(timestamp, securityCode, position){
 	);
 
 	//if (1 || production) msg_portfolio(ticker.currency==='RUB');
+	settings_save();
 }
 
 
@@ -714,6 +714,7 @@ function msg_sold(timestamp, securityCode, position, _quantity){
 	);
 
 	//if (1 || production) msg_portfolio(ticker.currency==='RUB');
+	settings_save();
 }
 
 
@@ -933,7 +934,9 @@ redisSub.on('message', function(channel, data){
 									    added_count++;
 								    }
 								});
-								if (!added_count){
+								if (added_count){
+									settings_save();
+								}else{
 									msg('Инструмент не найден в TradeAPI');
 								}
 							}else{
@@ -951,6 +954,7 @@ redisSub.on('message', function(channel, data){
 							delete portfolio[data.symbol];
 							delete data_indicators[data.symbol];
 							msg('Удалил инструмент #'+data.symbol);
+							settings_save();
 						}
 					}
 

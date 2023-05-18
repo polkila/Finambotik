@@ -4,6 +4,10 @@
             "USD": 0,
             "RUB": 3000.62
         },
+        "max_position": {
+            "USD": 100,
+            "RUB": 3000
+        },
         "stop_buy": false,
         "stop_sell": false,
         "stop_loss": -99,

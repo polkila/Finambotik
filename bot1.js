@@ -136,6 +136,7 @@ function settings_save(cb){
 	const settings = {
 		global: {
 			balance: balance,
+			max_position: max_position,
 			stop_buy: stop_buy,
 			stop_sell: stop_sell,
 			stop_loss: stop_loss,
@@ -200,6 +201,7 @@ function settings_load(cb){
 			Object.keys(vars).forEach(function(key){
 				if (key==='global'){
 					balance = vars[key].balance;
+					max_position = vars[key].max_position;
 					stop_buy = vars[key].stop_buy;
 					stop_sell = vars[key].stop_sell;
 					stop_loss = vars[key].stop_loss;
@@ -1174,7 +1176,7 @@ redisSub.on('message', function(channel, data){
 						let rows = [], keys = Object.keys(watch_tickers);
 						keys.forEach(function(symbol, n){
 							const ticker = watch_tickers[symbol];
-							const row = [ticker.symbol, ticker.sell_price];
+							const row = [ticker.symbol, func.round(ticker.sell_price, ticker.decimals)];
 							Object.keys(ticker.candles).forEach(function(interval){
 								row.push('interval', interval);
 							});
@@ -1289,6 +1291,30 @@ redisSub.on('message', function(channel, data){
 								}
 							});
 							msg(func.markdown_escape('* new stop_loss '+(-Math.abs(data.value))));
+						}
+					}
+
+					// установить максимальный размер позиции
+					// max rub [float]
+					if (data.cmd==='max rub'){
+						if (data.value && data.value>0){
+							let txt = func.markdown_escape('old max_position.RUB '+max_position.RUB);
+							max_position.RUB = Math.abs(data.value);
+							msg(txt+'\n'+func.markdown_escape('new max_position.RUB '+max_position.RUB));
+						}else{
+							msg('Укажите размер позиции больше 0');
+						}
+					}
+
+					// установить максимальный размер позиции
+					// max usd [float]
+					if (data.cmd==='max usd'){
+						if (data.value && data.value>0){
+							let txt = func.markdown_escape('old max_position.USD '+max_position.USD);
+							max_position.USD = Math.abs(data.value);
+							msg(txt+'\n'+func.markdown_escape('new max_position.USD '+max_position.USD));
+						}else{
+							msg('Укажите размер позиции больше 0');
 						}
 					}
 

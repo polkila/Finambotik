@@ -932,7 +932,7 @@ redisSub.on('message', function(channel, data){
 								    }
 								});
 								if (!added_count){
-									msg('Инструмент не найден');
+									msg('Инструмент не найден в TradeAPI');
 								}
 							}else{
 								console.log('err', err, 'req_body', req_body);
@@ -957,7 +957,7 @@ redisSub.on('message', function(channel, data){
 					if (data.cmd==='resubscribe'){
 						const ticker = watch_tickers[data.symbol];
 						if (ticker){
-							msg('resubscribe '+data.symbol);
+							msg('Подписываюсь заново на котировки #'+data.symbol);
 							redisClient.publish('fstream-cmd', JSON.stringify({cmd: data.cmd, symbol: data.symbol, securityBoard: ticker.securityBoard, securityCode: ticker.securityCode}));
 						}
 					}
@@ -971,7 +971,7 @@ redisSub.on('message', function(channel, data){
 							console.log('Buying position', data.symbol);
 							console.log('ticker_buy()', data.symbol, data.symbol, 'price', data.price);
 						}else{
-							msg('Не добавлен инструмент. Отправьте:\nstart '+data.symbol);
+							msg('Инструмент #'+data.symbol+' не добавлен с тратегию. Отправьте команду добавления, например:\nadd ticker TQBR.SBER');
 						}
 					}
 
@@ -983,6 +983,8 @@ redisSub.on('message', function(channel, data){
 						if (ticker && portfolio[data.symbol] && portfolio[data.symbol].positions){
 							console.log('Selling position', portfolio[data.symbol].positions);
 							ticker_sell(ticker.securityBoard, ticker.securityCode, parseFloat(data.price)||null, null, true);
+						}else{
+							msg('В стратегии нет открытых позиций #'+data.symbol);
 						}
 					}
 
@@ -1040,10 +1042,10 @@ redisSub.on('message', function(channel, data){
 									(ticker.stop_sell?'Выключена продажа\n':'')
 								);
 							}else{
-								msg('#'+data.symbol+' нет открытых позиций');
+								msg('В стратегии нет открытых позиций #'+data.symbol);
 							}
 						}else{
-							msg('#'+data.symbol+' нет открытых позиций');
+							msg('В стратегии нет открытых позиций #'+data.symbol);
 						}
 					}
 
@@ -1063,6 +1065,8 @@ redisSub.on('message', function(channel, data){
 										position.take_profit = func.round(position.buy_price + position.buy_price/100*ticker.take_profit, ticker.decimals);
 									});
 								}
+							}else{
+								msg('Инструмент #'+data.symbol+' не добавлен с тратегию. Отправьте команду добавления, например:\nadd ticker TQBR.SBER');
 							}
 						}
 					}
@@ -1082,6 +1086,8 @@ redisSub.on('message', function(channel, data){
 										position.stop_loss = func.round(position.buy_price + position.buy_price/100*ticker.stop_loss, ticker.decimals);
 									});
 								}
+							}else{
+								msg('Инструмент #'+data.symbol+' не добавлен с тратегию. Отправьте команду добавления, например:\nadd ticker TQBR.SBER');
 							}
 						}
 					}
@@ -1114,6 +1120,8 @@ redisSub.on('message', function(channel, data){
 								delete portfolio[data.symbol].positions[del_key];
 								//msg_portfolio();
 							}
+						}else{
+							msg('В стратегии нет позиций #'+data.symbol);
 						}
 					}
 
@@ -1135,6 +1143,8 @@ redisSub.on('message', function(channel, data){
 								rows.push((ticker.stop_sell?'Stop':'Start')+' sell');
 							}
 							msg(rows.join('\n'));
+						}else{
+							msg('Инструмент #'+data.symbol+' не добавлен с тратегию. Отправьте команду добавления, например:\nadd ticker TQBR.SBER');
 						}
 					}
 
@@ -1151,6 +1161,8 @@ redisSub.on('message', function(channel, data){
 									'Indicators #'+data.symbol+' '+interval+'\n'+func.markdown_escape(JSON.stringify(data_indicators[data.symbol][interval], null, 4))
 								);
 							});
+						}else{
+							msg('Инструмент #'+data.symbol+' не добавлен с тратегию. Отправьте команду добавления, например:\nadd ticker TQBR.SBER');
 						}
 					}
 

@@ -14,7 +14,6 @@ let time_connected = null;
 let time_disconnected = null;
 let reconnect_number = -1;
 let disconnected_by_error = false;
-let ping_timeout = null;
 let queue_commands = [];
 let queue_running = false;
 let total_subscriptions = 0;
@@ -291,7 +290,6 @@ function grpc_status(status){
 function grpc_end(){
 	connected = false;
 	console.log(func.dateYmdHis(), redis_prefix, 'Stream end');
-	if (ping_timeout) clearTimeout(ping_timeout);
 	time_disconnected = Date.now();
 	console.log(func.dateYmdHis(), redis_prefix, 'disconnected');
 	console.log(redis_prefix, 'Online duration', (time_disconnected-time_connected)/1000, 'sec');

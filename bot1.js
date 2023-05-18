@@ -579,7 +579,7 @@ function query_sell(clientOrderId, securityBoard, securityCode, lots, price, cb)
 
 function ticker_sell(securityBoard, securityCode, price, interval, force_sell, comment){
 	const ticker = watch_tickers[securityCode];
-	console.log(func.dateYmdHis(), 'ticker_sell()', ticker.symbol, price, interval, 'force_sell', force_sell);
+	//console.log(func.dateYmdHis(), 'ticker_sell()', ticker.symbol, price, interval, 'force_sell', force_sell);
 
 	if (!stop_sell && !ticker.stop_sell){
 		if (market_is_open(ticker) || force_sell){

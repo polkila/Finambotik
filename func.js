@@ -288,6 +288,11 @@ var sumArray = exports.sumArray = function(array){
 }
 
 
+var isObject = exports.isObject = function(item) {
+	return (item && typeof item === 'object' && !Array.isArray(item));
+}
+
+
 /*
 const merged = mergeDeep({a:1}, {b:{c:1,d:2}}, {b:{c:2}});
 */

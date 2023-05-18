@@ -438,7 +438,8 @@ function ticker_buy(securityBoard, securityCode, price, interval, force_buy, com
 			}else{
 				buy_price = ticker.buy_price;
 			}
-			buy_price = func.round(buy_price, ticker.decimals);
+			const minstep = ticker.minStep / Math.pow(10, ticker.decimals);
+			buy_price = Math.ceil(buy_price / minstep) * minstep; // округление до шага цены инструмента
 
 			// подсчитать количество и лоты
 			const max_pos = ticker.currency==='RUB' ? settings.max_position.RUB : settings.max_position.USD;
@@ -598,14 +599,15 @@ function ticker_sell(securityBoard, securityCode, price, interval, force_sell, c
 			}else{ // встречная
 				sell_price = ticker.sell_price;
 			}
-			sell_price = func.round(sell_price, ticker.decimals || 2);
 
 			if (portfolio[securityCode] && portfolio[securityCode].positions){
 				Object.keys(portfolio[securityCode].positions).forEach(function(position_key){
 					const position = portfolio[securityCode].positions[position_key];
 					if (!position.buy_in_progress && !position.sell_in_progress){
 						const profit_percent = (sell_price - position.buy_price) / position.buy_price * 100;
-						position.stop_loss = Math.max(position.stop_loss, func.round(sell_price + sell_price / 100 * (ticker.stop_loss || settings.stop_loss), ticker.decimals || 2));
+						if (!force_sell){ // если цена не указана вручную
+							position.stop_loss = Math.max(position.stop_loss, func.round(sell_price + sell_price / 100 * (ticker.stop_loss || settings.stop_loss), ticker.decimals || 2)); // trailing stop
+						}
 
 						if (profit_percent >= Math.min(ticker.take_profit || settings.take_profit, settings.take_profit)
 							|| profit_percent <= Math.max(ticker.stop_loss || settings.stop_loss, settings.stop_loss)
@@ -614,9 +616,12 @@ function ticker_sell(securityBoard, securityCode, price, interval, force_sell, c
 						){
 							interval = position.interval;
 							position.sell_in_progress = Date.now();
-							position.id = null;
 							position.comment = ((position.comment || '') + '\n' + (comment || '')).trim();
 							position.sell_comment = comment || '';
+
+							if (sell_price <= position.stop_loss) sell_price = position.stop_loss; // stop-limit
+							const minstep = ticker.minStep / Math.pow(10, ticker.decimals);
+							sell_price = Math.floor(sell_price / minstep) * minstep; // округление до шага цены инструмента
 
 							if (!production){
 								msg_sold(position.sell_in_progress, securityCode, func.mergeDeep({}, position));

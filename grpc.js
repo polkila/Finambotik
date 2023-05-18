@@ -426,7 +426,7 @@ function NewOrder(clientOrderId, direction, security_board, security_code, quant
 	function(err, response){
 		//console.log('NewOrder err', JSON.stringify(err, null, 4));
 		//console.log('NewOrder response', JSON.stringify(response, null, 4));
-		redisClient.publish('fbots-cmd', JSON.stringify({event: 'NewOrder', clientOrderId: clientOrderId, error: err, response: response}));
+		redisClient.publish('fbots-cmd', JSON.stringify({event: 'NewOrder', clientOrderId: clientOrderId, security_code: security_code, error: err, response: response}));
 	});
 /*
 error {"code":3,"details":"[156]Money shortage by value of 1608.94 (max. acceptable value - 0 lot.)","metadata":{"content-type":["application/grpc"],"date":["Wed, 17 May 2023 17:17:09 GMT"],"content-length":["0"],"strict-transport-security":["max-age=2592000"]}}}

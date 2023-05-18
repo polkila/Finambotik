@@ -1,16 +1,14 @@
 {
-    "global": {
-        "balance": {
-            "USD": 0,
-            "RUB": 3000.62
-        },
-        "max_position": {
-            "USD": 100,
-            "RUB": 3000
-        },
-        "stop_buy": false,
-        "stop_sell": false,
-        "stop_loss": -99,
-        "take_profit": 10
-    }
+	"balance": {
+		"USD": 0,
+		"RUB": 3000.62
+	},
+	"max_position": {
+		"USD": 100,
+		"RUB": 3000
+	},
+	"stop_buy": false,
+	"stop_sell": false,
+	"stop_loss": -99,
+	"take_profit": 10
 }

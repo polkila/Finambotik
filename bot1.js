@@ -193,7 +193,7 @@ function settings_load(cb){
 		}else{
 			console.error(func.dateYmdHis(), 'settings_load() ERROR load vars\n', err);
 			console.log('settings: ', data);
-			msg('settings_load() ERROR load settings\n'+JSON.stringify(err, null, 4));
+			//msg('settings_load() ERROR load settings\n'+JSON.stringify(err, null, 4));
 		}
 
 		// watch_tickers
@@ -204,7 +204,7 @@ function settings_load(cb){
 			}else{
 				console.error(func.dateYmdHis(), 'settings_load() ERROR load tickers\n', err);
 				console.log('tickers: ', data);
-				msg('settings_load() ERROR load tickers\n'+JSON.stringify(err, null, 4));
+				//msg('settings_load() ERROR load tickers\n'+JSON.stringify(err, null, 4));
 			}
 
 			// portfolio

@@ -87,7 +87,7 @@ let portfolio = {
 
 function ticker_init(securityBoard, securityCode){
 	const ticker = watch_tickers[securityCode];
-	if (!ticker.minStep) ticker.minStep = 0;
+	if (!ticker.minStep) ticker.minStep = 1;
 	if (!ticker.decimals) ticker.decimals = 2;
 	if (!ticker.quantity) ticker.quantity = 0;
 	if (!portfolio[securityCode]) portfolio[securityCode] = {positions:{}};
@@ -264,7 +264,7 @@ function msg_portfolio(){
 			req_body.data.positions.forEach(function(position){
 				const ticker = watch_tickers[position.securityCode] || {symbol:position.securityCode};
 				ticker.quantity = position.balance;
-				const avg_price = position.averagePrice, price = position.currentPrice, result_percent = func.round((price-avg_price)/avg_price*100, 3)||0;
+				const avg_price = position.averagePrice, price = func.correctFloat(position.currentPrice), result_percent = func.round((price-avg_price)/avg_price*100, 3)||0;
 				positions.push(ticker.symbol+' '+ticker.quantity+' шт. '+price+' '+(result_percent>0?'+':'')+result_percent+'%');
 			});
 

@@ -594,7 +594,7 @@ redisSub.on('message', function(channel, data){
 	setTimeout(grpc_connect, 999);
 	console.log(func.dateYmdHis(), redis_prefix, process.pid, 'started');
 	if (process.send) process.send('ready');
-	redisClient.publish('ftelegram-bot',  JSON.stringify({cmd:'private', text:redis_prefix+' started'}));
+	//redisClient.publish('ftelegram-bot',  JSON.stringify({cmd:'private', text:redis_prefix+' started'}));
 })();
 
 

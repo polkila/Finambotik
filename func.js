@@ -130,60 +130,6 @@ exports.EMA = function(_period, _vars){
 }
 
 
-// Weighted Moving Average
-exports.WMA = function(_period, _decimals, _vars){
-	let period = _period || 10,
-		decimals = _decimals || 14,
-		points = [],
-		WMAvalue,
-		WMAPoint = [0, 0],
-		WMAPoints = [];
-
-	this.loadVars = function(vars){
-		if (vars){
-			points = vars.points || [];
-		}
-	}
-
-	if (_vars){
-		this.loadVars(_vars);
-	}
-
-	this.addPoint = function(x, y){
-		if (points.unshift(y) > period) points = points.slice(0, period);
-		if (points.length===period){
-			let weight, sum = 0, norm = 0, i = 0;
-			for(; i < points.length; i++){
-				weight = period - i;
-				sum += points[i] * weight;
-				norm += weight;
-			}
-			WMAvalue = round(sum / norm, decimals);
-			WMAPoint = [x, WMAvalue];
-			WMAPoints.push(WMAPoint);
-		}
-	};
-
-	this.getPoint = function(){
-		return WMAPoint;
-	};
-
-	this.getPoints = function(){
-		return WMAPoints;
-	};
-
-	this.getVars = function(){
-		return {
-			points: points,
-			WMAvalue: WMAvalue,
-		}
-	};
-}
-
-
-
-
-
 
 
 
@@ -275,19 +221,6 @@ var correctFloat = exports.correctFloat = function(number){
 }
 
 
-var countDecimals = exports.countDecimals = function(value){
-	if(Math.floor(value) === value) return 0;
-	return value.toString().split(".")[1].length || 0;
-}
-
-
-var sumArray = exports.sumArray = function(array){
-	return array.reduce(function (prev, cur) {
-		return prev + cur;
-	}, 0);
-}
-
-
 var isObject = exports.isObject = function(item) {
 	return (item && typeof item === 'object' && !Array.isArray(item));
 }
@@ -315,36 +248,9 @@ var mergeDeep = exports.mergeDeep = function(target, ...sources) {
 }
 
 
-var rand = exports.rand = function(min, max){
-	return Math.floor(Math.random()*(max-min+1)+min);
-};
-
-
 var round = exports.round = function(value, decimals){
 	return Number(Math.round(value + 'e' + decimals) + 'e-' + decimals);
 };
-
-
-var toFixed = exports.toFixed = function(value, decimals){
-	return parseFloat(value.toFixed(decimals));
-}
-
-
-exports.quotation2decimal = function(quotation, decimals){
-	return round(parseInt(quotation.units)+quotation.nano/1000000000, decimals||5);
-}
-
-
-exports.decimal2quotation = function(dec){
-	const floor = Math.floor(dec);
-	return {units: floor, nano: Math.round((dec - floor) * 1000000000)};
-}
-
-
-exports.link_bar = function(symbol, etf){
-	return '';
-};
-
 
 
 exports.interval_to_minutes = function(interval){

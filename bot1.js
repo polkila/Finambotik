@@ -25,6 +25,8 @@ if (production){
 let settings = {
 	balance: {USD: 0, RUB: 0},
 	max_position: {USD: 33, RUB: 3333}, // максимальный размер позиции
+	min_price_offset: 3, // при повторной покупке, цена должна отличаться на 3% и более
+	max_positions: 3, // количество покупок на 1 инструмент
 	stop_buy: false,
 	stop_sell: false,
 	stop_loss: -99,
@@ -189,7 +191,7 @@ function settings_load(cb){
 	console.log('Loading settings');
 	fs.readFile('settings/'+redis_prefix+'-settings.json', 'utf-8', function(err, data){
 		if (!err && data){
-			settings = JSON.parse(data.toString());
+			settings = func.mergeDeep({}, settings, JSON.parse(data.toString()));
 		}else{
 			console.error(func.dateYmdHis(), 'settings_load() ERROR load vars\n', err);
 			console.log('settings: ', data);
@@ -432,73 +434,100 @@ function ticker_buy(securityBoard, securityCode, price, interval, force_buy, com
 		if (market_is_open(ticker) || force_buy){
 			if (!portfolio[securityCode]) portfolio[securityCode] = {symbol: ticker.symbol, positions: {}};
 
-			let buy_price;
-			if (price){ // цена указана вручную
-				buy_price = price;
-			}else{
-				buy_price = ticker.buy_price;
-			}
-			const minstep = ticker.minStep / Math.pow(10, ticker.decimals);
-			buy_price = Math.ceil(buy_price / minstep) * minstep; // округление до шага цены инструмента
-
-			// подсчитать количество и лоты
-			const max_pos = ticker.currency==='RUB' ? settings.max_position.RUB : settings.max_position.USD;
-			let lots = Math.floor( max_pos / (ticker.lotSize * buy_price)) || 1;
-			let quantity = lots * ticker.lotSize;
-
-			// Проверка баланса
-			if ((ticker.currency==='RUB' ? settings.balance.RUB : settings.balance.USD) > buy_price*quantity){
-				const dateObj = new Date();
-				const timestamp = dateObj.getTime();
-				const position = {clientOrderId: timestamp, securityBoard: securityBoard, securityCode: securityCode, time: timestamp, date: func.dateYmdHis(), interval: interval, lots: lots, quantity: quantity, buy_price: buy_price, stop_loss: func.round(buy_price + buy_price / 100 * (ticker.stop_loss || settings.stop_loss), ticker.decimals || 2), buy_in_progress: timestamp, comment: comment || '', buy_comment: comment || ''};
-				portfolio[securityCode].positions[position.time] = position;
-
-				if (!production){
-					delete position.buy_in_progress;
-					msg_bought(timestamp, securityCode, position);
+			const position_keys = Object.keys(portfolio[securityCode].positions);
+			if (position_keys.length < settings.max_positions){
+				let buy_price;
+				if (price){ // цена указана вручную
+					buy_price = price;
 				}else{
-					query_buy(timestamp, securityBoard, securityCode, position.lots, position.buy_price, function(err, req_body){
-						msg(
-							'Покупаю '+position.quantity+' #'+ticker.symbol+' *'+position.buy_price+'* '+interval+'\n'+
-							func.markdown_escape(position.comment)
-						);
+					buy_price = ticker.buy_price;
+				}
+				const minstep = ticker.minStep / Math.pow(10, ticker.decimals);
+				buy_price = Math.ceil(buy_price / minstep) * minstep; // округление до шага цены инструмента
 
-						/*if (!err && req_body && req_body.data && req_body.data.transactionId){
-							position.id = req_body.data.transactionId;
-							console.log(func.dateYmdHis(), 'Limit-Buy', position.quantity, ticker.symbol, position.buy_price, interval);
-							//setTimeout(orders_lookup, 999, true);
-							ticker.buy_tries = 0;
+				// поискать позиции, купленные по такой же цене +- min_price_offset
+				let cancel = false; // не покупать
+				position_keys.forEach(function(timestamp){
+					const position = portfolio[securityCode].positions[timestamp];
+					if (position.interval===interval){
+						if (Math.abs(buy_price-position.buy_price)/position.buy_price*100 < settings.min_price_offset) cancel = true; // совпадение по buy_price
+					}
+				});
+
+				if (!cancel){
+					// подсчитать количество и лоты
+					const max_pos = ticker.currency==='RUB' ? settings.max_position.RUB : settings.max_position.USD;
+					let lots = Math.floor( max_pos / (ticker.lotSize * buy_price)) || 1;
+					let quantity = lots * ticker.lotSize;
+
+					// Проверка баланса
+					if ((ticker.currency==='RUB' ? settings.balance.RUB : settings.balance.USD) > buy_price*quantity){
+						const dateObj = new Date();
+						const timestamp = dateObj.getTime();
+						const position = {clientOrderId: timestamp, securityBoard: securityBoard, securityCode: securityCode, time: timestamp, date: func.dateYmdHis(), interval: interval, lots: lots, quantity: quantity, buy_price: buy_price, stop_loss: func.round(buy_price + buy_price / 100 * (ticker.stop_loss || settings.stop_loss), ticker.decimals || 2), buy_in_progress: timestamp, comment: comment || '', buy_comment: comment || ''};
+						portfolio[securityCode].positions[position.time] = position;
+
+						if (!production){
+							delete position.buy_in_progress;
+							msg_bought(timestamp, securityCode, position);
 						}else{
-							const clear = function(){
-								delete portfolio[securityCode].positions[position.time]; // удалить позицию
-							};
-
-							if ((err && err.code==='ESOCKETTIMEDOUT') || !req_body){
-								ticker.buy_tries = (ticker.buy_tries || 0) + 1;
-								if (ticker.buy_tries < 10){
-									setTimeout(ticker_buy, 33333, securityBoard, securityCode, price, interval, force_buy, comment);
-								}
-								clear();
-							}else{
-								console.error(func.dateYmdHis(), 'Error buy', position.quantity, ticker.symbol, 'price', position.buy_price, interval, 'limit_down', ticker.limit_down, 'limit_up', ticker.limit_up);
-								console.error('position', position);
+							query_buy(timestamp, securityBoard, securityCode, position.lots, position.buy_price, function(err, req_body){
 								msg(
-									'*Error buy* '+position.quantity+' #'+ticker.symbol+' ('+position.buy_price+') '+interval+'\n'+
-									func.dateYmdHis()+'\n'+
-									func.markdown_escape(JSON.stringify({err:err, req_body:req_body}, null, 4))+'\n'
+									'Покупаю '+position.quantity+' #'+ticker.symbol+' *'+position.buy_price+'* '+interval+'\n'+
+									func.markdown_escape(position.comment)
 								);
-								setTimeout(clear, 3333);
-							}
-						}*/
-					});
+
+								/*if (!err && req_body && req_body.data && req_body.data.transactionId){
+									position.id = req_body.data.transactionId;
+									console.log(func.dateYmdHis(), 'Limit-Buy', position.quantity, ticker.symbol, position.buy_price, interval);
+									//setTimeout(orders_lookup, 999, true);
+									ticker.buy_tries = 0;
+								}else{
+									const clear = function(){
+										delete portfolio[securityCode].positions[position.time]; // удалить позицию
+									};
+
+									if ((err && err.code==='ESOCKETTIMEDOUT') || !req_body){
+										ticker.buy_tries = (ticker.buy_tries || 0) + 1;
+										if (ticker.buy_tries < 10){
+											setTimeout(ticker_buy, 33333, securityBoard, securityCode, price, interval, force_buy, comment);
+										}
+										clear();
+									}else{
+										console.error(func.dateYmdHis(), 'Error buy', position.quantity, ticker.symbol, 'price', position.buy_price, interval, 'limit_down', ticker.limit_down, 'limit_up', ticker.limit_up);
+										console.error('position', position);
+										msg(
+											'*Error buy* '+position.quantity+' #'+ticker.symbol+' ('+position.buy_price+') '+interval+'\n'+
+											func.dateYmdHis()+'\n'+
+											func.markdown_escape(JSON.stringify({err:err, req_body:req_body}, null, 4))+'\n'
+										);
+										setTimeout(clear, 3333);
+									}
+								}*/
+							});
+						}
+
+
+					}else{
+						console.error(func.dateYmdHis(), 'Cancel buy', quantity, ticker.symbol, buy_price, interval, 'out of balance');
+						msg(
+							'*Покупка* #'+ticker.symbol+' '+buy_price+' '+interval+'\n'+
+							'Недостаточно средств.'
+						);
+					}
+				}else{
+					/*console.error(func.dateYmdHis(), 'Cancel buy', ticker.symbol, buy_price, interval, 'same price');
+					msg(
+						'*Сигнал на покупку* #'+ticker.symbol+' '+interval+'\n'+
+						'Есть позиция в рамках '+settings.min_price_offset+'% от текущей цены.'
+					);*/
 				}
 
-
 			}else{
-				console.error(func.dateYmdHis(), 'Cancel buy', quantity, ticker.symbol, buy_price, interval, 'out of balance');
+				console.error(func.dateYmdHis(), 'Cancel buy', ticker.symbol, interval, 'out of limit');
 				msg(
-					'*Покупка* #'+ticker.symbol+' '+buy_price+' '+interval+'\n'+
-					'Недостаточно средств.'
+					'*Сигнал на покупку* #'+ticker.symbol+' '+interval+'\n'+
+					'Достигнут лимит по инструменту.'
 				);
 			}
 
@@ -1320,6 +1349,22 @@ redisSub.on('message', function(channel, data){
 							'sell SBER 234.56\n'+
 							'```\n'+
 							'\n'+
+							'Продать рублёвые/долларовые бумаги\n'+
+							'```\n'+
+							'sell rub\n'+
+							'sell usd\n'+
+							'```\n'+
+							'\n'+
+							'Продать бумаги с результатом >= +5%\n'+
+							'```\n'+
+							'sell 5\n'+
+							'```\n'+
+							'\n'+
+							'Продать все бумаги\n'+
+							'```\n'+
+							'sell *\n'+
+							'```\n'+
+							'\n'+
 							'Просмотр бумаг в портфеле\n'+
 							'```\n'+
 							'portfolio\n'+
@@ -1354,15 +1399,15 @@ redisSub.on('message', function(channel, data){
 					// или продать позицию с доходом >= data.percent
 					if (data.cmd==='sell'){
 						// sell *
-						// sell usd
+						// sell USD
 						// sell RUB
-						if (['*', 'usd', 'rub'].includes(data.option.toLowerCase())){
+						if (['*', 'usd', 'rub'].includes(data.option)){
 							msg('Продаю '+data.option.toUpperCase()+' позиции');
 							Object.keys(portfolio).forEach(function(symbol){ // найти все купленные инструменты
 								if (portfolio[symbol].positions){
 									const ticker = watch_tickers[symbol];
 									if (ticker){
-										if (data.option==='*' || (data.option==='RUB' && ticker.currency==='RUB') || (data.option==='usd' && ticker.currency!=='RUB')){
+										if (data.option==='*' || (data.option==='rub' && ticker.currency==='RUB') || (data.option==='usd' && ticker.currency!=='RUB')){
 											Object.keys(portfolio[symbol].positions).forEach(function(position_key){
 												const position = portfolio[symbol].positions[position_key];
 												if (!position.buy_in_progress && !position.sell_in_progress){

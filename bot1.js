@@ -443,7 +443,8 @@ function ticker_buy(securityBoard, securityCode, price, interval, force_buy, com
 					buy_price = ticker.buy_price;
 				}
 				const minstep = ticker.minStep / Math.pow(10, ticker.decimals);
-				buy_price = Math.ceil(buy_price / minstep) * minstep; // округление до шага цены инструмента
+				buy_price = func.correctFloat(Math.ceil(buy_price / minstep) * minstep); // округление до шага цены инструмента
+
 
 				// поискать позиции, купленные по такой же цене +- min_price_offset
 				let cancel = false; // не покупать
@@ -650,7 +651,7 @@ function ticker_sell(securityBoard, securityCode, price, interval, force_sell, c
 
 							if (sell_price <= position.stop_loss) sell_price = position.stop_loss; // stop-limit
 							const minstep = ticker.minStep / Math.pow(10, ticker.decimals);
-							sell_price = Math.floor(sell_price / minstep) * minstep; // округление до шага цены инструмента
+							sell_price = func.correctFloat(Math.floor(sell_price / minstep) * minstep); // округление до шага цены инструмента
 
 							if (!production){
 								msg_sold(position.sell_in_progress, securityCode, func.mergeDeep({}, position));

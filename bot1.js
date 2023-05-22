@@ -110,6 +110,7 @@ function subscribe_all(){
 	Object.keys(watch_tickers).forEach(function(symbol){
 		ticker_subscribe(watch_tickers[symbol].securityBoard, watch_tickers[symbol].securityCode);
 	});
+	orders_lookup();
 }
 
 
@@ -889,7 +890,7 @@ redisSub.on('message', function(channel, data){
 
 			if (channel==='fbots-cmd'){
 				if (data.cmd==='resubscribe'){
-					setTimeout(subscribe_all, 3333);
+					setTimeout(subscribe_all, 1111);
 				}
 
 				if (data.event==='NewOrder'){

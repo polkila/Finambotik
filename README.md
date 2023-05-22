@@ -29,6 +29,10 @@ sudo apt-get install redis
 #### Установка PM2
 ```
 npm install pm2@latest -g
+```
+
+Для автозапуска PM2 вместе с ОС:
+```
 pm2 startup
 ```
 
@@ -60,7 +64,25 @@ node bot1.js
 Но я предпочитаю использовать процесс менеджер. Из директории с торговым роботом нужно выполнить следующее:
 ```
 pm2 start pm2.config.js
+```
+
+Для сохранения списка процессов на случай перезапуска ОС:
+```
 pm2 save
+```
+
+После этого остановка/старт/перезапуск всех трёх процессов делается такими командами в консоли:
+```
+pm2 stop pm2.config.js
+pm2 start pm2.config.js
+pm2 restart pm2.config.js
+```
+
+Остановка/старт/перезапуск одного процесса:
+```
+pm2 stop pm2.config.js --only bot1
+pm2 start pm2.config.js --only bot1
+pm2 restart pm2.config.js --only bot1
 ```
 
 По желанию можно в файле `settings/bot1-indicators.json` вписать циферки индикаторов, чтобы робот не ждал 200 свечек.

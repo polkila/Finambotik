@@ -121,6 +121,7 @@ function grpc_data(data){
 
 		// orderbook
 		if (data.order_book && data.order_book.security_code){
+			//console.log('Orderbook', JSON.stringify(data, null, 4));
 			const ticker = watch_tickers[data.order_book.security_code];
 			if (ticker){
 				redisClient.publish('forderbook_'+ticker.symbol, JSON.stringify({event: 'orderbook', payload: data.order_book}));
@@ -129,7 +130,7 @@ function grpc_data(data){
 
 		// order
 		if (data.order && data.order.security_code){
-			console.log('Order data', data);
+			//console.log('Order data', data);
 			const ticker = watch_tickers[data.order.security_code];
 			if (ticker){
 				redisClient.publish('fbots-cmd', JSON.stringify({event: 'order', payload: data.order}));
@@ -240,11 +241,11 @@ function grpc_data(data){
 		}else
 
 		// trade
-		if (data.order && data.order.security_code){
-			console.log('Order data', data);
-			const ticker = watch_tickers[data.order.security_code];
+		if (data.trade && data.trade.security_code){
+			console.log('Trade data', data);
+			const ticker = watch_tickers[data.trade.security_code];
 			if (ticker){
-				redisClient.publish('fbots-cmd', JSON.stringify({event: 'order', payload: data.order}));
+				redisClient.publish('fbots-cmd', JSON.stringify({event: 'trade', payload: data.trade}));
 			}
 			/*
 			data {

@@ -22,6 +22,13 @@ let total_subscriptions = 0;
 
 let watch_tickers = {
 /*
+	'AAPL':{
+		symbol: 'AAPL',
+		security_code: 'AAPL',
+		security_board: 'MCT',
+		orderbook: true,
+		trades: true,
+	},
 	'GAZP':{
 		symbol: 'GAZP',
 		security_code: 'GAZP',
@@ -106,8 +113,8 @@ function grpc_open(){
 
 function grpc_data(data){
 	if (data){
-		if (data.response && data.response.request_id){
-			console.log('Response data', data);
+		if (data.response){
+			console.log('Response data', JSON.stringify(data, null, 4));
 			/*
 			{
 				"response": {

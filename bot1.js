@@ -89,6 +89,7 @@ let portfolio = {
 
 function ticker_init(securityBoard, securityCode){
 	const ticker = watch_tickers[securityCode];
+	if (!settings.balance[ticker.currency]) settings.balance[ticker.currency] = 0;
 	if (!ticker.minStep) ticker.minStep = 1;
 	if (!ticker.decimals) ticker.decimals = 2;
 	if (!ticker.quantity) ticker.quantity = 0;
@@ -347,18 +348,21 @@ function orders_lookup(){
 				if (portfolio[securityCode].positions){
 					Object.keys(portfolio[securityCode].positions).forEach(function(position_key){
 						const position = portfolio[securityCode].positions[position_key];
-						if (orders[position.transaction_id] && (position.buy_in_progress || position.sell_in_progress)){
-							if (orders[position.transaction_id].status==='Matched'){
+						const order = orders[position.transaction_id];
+						if (order && (position.buy_in_progress || position.sell_in_progress)){
+							if (order.status==='Matched'){
 								if (position.buy_in_progress){
-									delete position.buy_in_progress;
+									if (order.price < position.buy_price) position.buy_price = order.price;
 									msg_bought(position_key, securityCode, position);
+									delete position.buy_in_progress;
 								}
 								if (position.sell_in_progress){
-									delete position.sell_in_progress;
+									if (order.price > position.sell_price) position.sell_price = order.price;
 									msg_sold(position_key, securityCode, func.mergeDeep({}, position));
+									delete portfolio[securityCode].positions[position_key];
 								}
 							}
-							if (orders[position.transaction_id].status==='Cancelled'){
+							if (order.status==='Cancelled'){
 								msg('*Отменил '+(position.buy_in_progress?'покупку':'')+(position.sell_in_progress?'продажу':'')+'* '+position.quantity+' #'+securityCode);
 								if (position.buy_in_progress){
 									delete portfolio[securityCode].positions[position_key];
@@ -470,8 +474,8 @@ function ticker_buy(securityBoard, securityCode, price, interval, force_buy, com
 						portfolio[securityCode].positions[position.time] = position;
 
 						if (!production){
-							delete position.buy_in_progress;
 							msg_bought(timestamp, securityCode, position);
+							delete position.buy_in_progress;
 						}else{
 							query_buy(timestamp, securityBoard, securityCode, position.lots, position.buy_price, function(err, req_body){
 								msg(
@@ -509,7 +513,6 @@ function ticker_buy(securityBoard, securityCode, price, interval, force_buy, com
 							});
 						}
 
-
 					}else{
 						console.error(func.dateYmdHis(), 'Cancel buy', quantity, ticker.symbol, buy_price, interval, 'out of balance');
 						msg(
@@ -517,6 +520,7 @@ function ticker_buy(securityBoard, securityCode, price, interval, force_buy, com
 							'Недостаточно средств.'
 						);
 					}
+
 				}else{
 					/*console.error(func.dateYmdHis(), 'Cancel buy', ticker.symbol, buy_price, interval, 'same price');
 					msg(
@@ -653,20 +657,21 @@ function ticker_sell(securityBoard, securityCode, price, interval, force_sell, c
 							if (sell_price <= position.stop_loss) sell_price = position.stop_loss; // stop-limit
 							const minstep = ticker.minStep / Math.pow(10, ticker.decimals);
 							sell_price = func.correctFloat(Math.floor(sell_price / minstep) * minstep); // округление до шага цены инструмента
+							position.sell_price = sell_price;
 
 							if (!production){
 								msg_sold(position.sell_in_progress, securityCode, func.mergeDeep({}, position));
 								delete portfolio[securityCode].positions[position_key];
 							}else{
-								query_sell(position_key, securityBoard, securityCode, position.lots, sell_price, function(err, req_body){
+								query_sell(position_key, securityBoard, securityCode, position.lots, position.sell_price, function(err, req_body){
 									msg(
-										'Продаю '+position.quantity+' #'+ticker.symbol+' *'+sell_price+'* '+position.interval+'\n'+
+										'Продаю '+position.quantity+' #'+ticker.symbol+' *'+position.sell_price+'* '+position.interval+'\n'+
 										func.markdown_escape(position.comment)
 									);
 
 									/*if (!err && req_body && req_body.data && req_body.data.transactionId){
 										position.id = req_body.data.transactionId;
-										console.log(func.dateYmdHis(), 'Limit-Sell', position.quantity, ticker.symbol, sell_price, position.interval);
+										console.log(func.dateYmdHis(), 'Limit-Sell', position.quantity, ticker.symbol, position.sell_price, position.interval);
 
 										//setTimeout(orders_lookup, 999, true);
 										ticker.sell_tries = 0;
@@ -844,11 +849,11 @@ function event_candle(data){}
 
 
 function event_orderbook(data){
-	if (data.payload.bids && data.payload.asks && data.payload.bids[0] && data.payload.asks[0]){
+	if (data.payload.bids && data.payload.asks && data.payload.bids[0] && data.payload.bids[0].price && data.payload.asks[0] && data.payload.asks[0].price){
 		const ticker = watch_tickers[data.payload.security_code];
 		//ticker.last_price = ?;
-		ticker.buy_price = data.payload.asks[0].price;
-		ticker.sell_price = data.payload.bids[0].price;
+		ticker.buy_price = func.correctFloat(data.payload.asks[0].price);
+		ticker.sell_price = func.correctFloat(data.payload.bids[0].price);
 
 		if (!settings.stop_sell && !ticker.stop_sell){
 			ticker_sell(ticker.securityBoard, ticker.securityCode, ticker.sell_price, null, false);
@@ -935,12 +940,14 @@ redisSub.on('message', function(channel, data){
 							if (position.transaction_id===data.payload.transaction_id){
 								if (data.payload.status==='ORDER_STATUS_MATCHED'){
 									if (position.buy_in_progress){
-										delete position.buy_in_progress;
+										if (data.payload.price < position.buy_price) position.buy_price = data.payload.price;
 										msg_bought(position_key, data.payload.security_code, position);
+										delete position.buy_in_progress;
 									}
 									if (position.sell_in_progress){
-										delete position.sell_in_progress;
+										if (data.payload.price > position.sell_price) position.sell_price = data.payload.price;
 										msg_sold(position_key, data.payload.security_code, func.mergeDeep({}, position));
+										delete portfolio[data.payload.security_code].positions[position_key];
 									}
 								}
 								if (data.payload.status==='ORDER_STATUS_CANCELLED'){
@@ -977,18 +984,20 @@ redisSub.on('message', function(channel, data){
 								let added_count = 0;
 								req_body.data.securities.forEach(function(ticker){
 								    if (symbols.includes(ticker.board+'.'+ticker.code)){
+								    	//console.log(ticker);
 									    const add_ticker = {symbol: ticker.code};
 									    add_ticker.securityCode = ticker.code;
 									    add_ticker.securityBoard = ticker.board;
 									    add_ticker.name = ticker.shortName;
 									    add_ticker.lotSize = ticker.lotSize;
 									    add_ticker.currency = ticker.currency==='RUR' ? 'RUB' : ticker.currency;
+									    add_ticker.decimals = ticker.decimals;
 									    add_ticker.minStep = ticker.minStep;
 									    add_ticker.candles = {'15min': [200,1.2]};
 									    add_ticker.added = Date.now();
 									    watch_tickers[ticker.code] = add_ticker;
 									    ticker_init(ticker.board, ticker.code);
-									    msg('Добавил #'+ticker.code+' '+ticker.shortName);
+									    msg('Добавил #'+ticker.code+' '+ticker.shortName+'\nЛотность '+add_ticker.lotSize+'\nВалюта '+add_ticker.currency+'\nШаг цены '+(add_ticker.minStep/Math.pow(10, add_ticker.decimals)));
 									    added_count++;
 								    }
 								});
@@ -1245,7 +1254,7 @@ redisSub.on('message', function(channel, data){
 						let rows = [], keys = Object.keys(watch_tickers);
 						keys.forEach(function(symbol, n){
 							const ticker = watch_tickers[symbol];
-							const row = [ticker.symbol, func.round(ticker.sell_price, ticker.decimals)];
+							const row = ['#'+ticker.symbol, func.round(ticker.sell_price, ticker.decimals)];
 							Object.keys(ticker.candles).forEach(function(interval){
 								row.push('interval', interval);
 							});

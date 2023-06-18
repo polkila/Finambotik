@@ -63,7 +63,8 @@ function get_prefix(chat_id){
 // h
 // history
 // resubscribe
-bot.on(/^\s*(help|portfolio|p|settings|s|history|h|list|l|orders|o|resubscribe)\s*$/i, function(msg, props){
+// shutdown
+bot.on(/^\s*(help|portfolio|p|settings|s|history|h|list|l|orders|o|resubscribe|shutdown)\s*$/i, function(msg, props){
 	let prefix = get_prefix(msg.chat.id);
 	if (prefix){
 		const cmd = props.match[1].toLowerCase();

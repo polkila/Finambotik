@@ -1,4 +1,4 @@
-var config = require('./config');
+const config = require('./config');
 
 
 /* Request */
@@ -33,10 +33,10 @@ http_request({
 
 */
 
-var http_request = exports.http_request = require('request');
+const http_request = exports.http_request = require('request');
 
 
-var rest = exports.rest = function(method, path, params, cb){
+const rest = exports.rest = function(method, path, params, cb){
 	params = params || {};
 	http_request({
 		method: method || 'get',
@@ -65,6 +65,43 @@ var rest = exports.rest = function(method, path, params, cb){
 }
 
 
+const fs = exports.fs = require('fs');
+
+const readJSONfile = exports.readJSONfile = function(filename, cb){
+	fs.readFile(filename, 'utf-8', function(err, data){
+		if (!err){
+			cb(err, data ? JSON.parse(data.toString()): null);
+		}else{
+			cb(err, data);
+		}
+	});
+}
+
+exports.cachedJSONfile = function(filename, cacheTimeMs, cb){
+	if (cacheTimeMs){
+		fs.stat(filename, function(err, stat){
+			if (!err){
+				if (Date.now() - stat.mtimeMs < cacheTimeMs){
+					readJSONfile(filename, cb);
+				}else{
+					cb(null, null);
+				}
+			}else{
+				cb(err, null);
+			}
+		});
+	}else{
+		readJSONfile(filename, cb);
+	}
+}
+
+exports.writeJSONfile = function(filename, data, cb){
+	fs.writeFile(filename, JSON.stringify(data), function(err){
+		cb(err);
+	});
+}
+
+
 
 
 /* Indicators */
@@ -76,9 +113,7 @@ exports.EMA = function(_period, _vars){
 		multiplier = 2 / (period + 1),
 		count = 0,
 		sum = 0,
-		EMAvalue,
-		EMAPoint = [0, 0],
-		EMAPoints = [];
+		EMAvalue;
 
 	this.loadVars = function(vars){
 		if (vars){
@@ -95,15 +130,11 @@ exports.EMA = function(_period, _vars){
 	this.addPoint = function(x, y){
 		if (EMAvalue){
 			EMAvalue = correctFloat((y * multiplier) + (EMAvalue * (1 - multiplier)));
-			EMAPoint = [x, EMAvalue];
-			EMAPoints.push(EMAPoint);
 		}else{
 			count++;
 			sum += y;
 			if (count === period){
 				EMAvalue = sum / period;
-				EMAPoint = [x, EMAvalue];
-				EMAPoints.push(EMAPoint);
 			}
 		}
 	};
@@ -112,20 +143,9 @@ exports.EMA = function(_period, _vars){
 		return EMAvalue;
 	};
 
-	this.getPoint = function(){
-		return EMAPoint;
-	};
-
-	this.getPoints = function(){
-		return EMAPoints;
-	};
-
 	this.getVars = function(){
-		return {
-			count: count,
-			sum: sum,
-			EMAvalue: EMAvalue,
-		}
+		if (EMAvalue) return {EMAvalue: EMAvalue};
+		else return {count: count, sum: sum};
 	};
 }
 
@@ -149,8 +169,8 @@ dateYmdHis(1548720000);
 dateYmdHis(1548720000000);
 dateYmdHis('1548720000000');
 */
-var dateYmdHis = exports.dateYmdHis = function(asset, base){
-	var d = base ? new Date(base) : new Date();
+const dateYmdHis = exports.dateYmdHis = function(asset, base){
+	const d = base ? new Date(base) : new Date();
 
 	if (asset){
 		if (/^\+?-?\d+ year/.test(asset)){
@@ -193,7 +213,7 @@ var dateYmdHis = exports.dateYmdHis = function(asset, base){
 2016-11-30
 
 */
-var dateYmd = exports.dateYmd = function(asset, base){
+const dateYmd = exports.dateYmd = function(asset, base){
 	return dateYmdHis(asset, base).substr(0, 10);
 };
 
@@ -203,7 +223,7 @@ var dateYmd = exports.dateYmd = function(asset, base){
 22:15:55
 
 */
-var dateHis = exports.dateHis = function(asset, base){
+const dateHis = exports.dateHis = function(asset, base){
 	return dateYmdHis(asset, base).substr(11);
 };
 
@@ -216,12 +236,12 @@ exports.markdown_escape = function(str){
 
 
 
-var correctFloat = exports.correctFloat = function(number){
+const correctFloat = exports.correctFloat = function(number){
 	return parseFloat(parseFloat(number).toPrecision(14));
 }
 
 
-var isObject = exports.isObject = function(item) {
+const isObject = exports.isObject = function(item) {
 	return (item && typeof item === 'object' && !Array.isArray(item));
 }
 
@@ -229,7 +249,7 @@ var isObject = exports.isObject = function(item) {
 /*
 const merged = mergeDeep({a:1}, {b:{c:1,d:2}}, {b:{c:2}});
 */
-var mergeDeep = exports.mergeDeep = function(target, ...sources){
+const mergeDeep = exports.mergeDeep = function(target, ...sources){
 	if (!sources.length) return target;
 	const source = sources.shift();
 
@@ -248,7 +268,7 @@ var mergeDeep = exports.mergeDeep = function(target, ...sources){
 }
 
 
-var round = exports.round = function(value, decimals){
+const round = exports.round = function(value, decimals){
 	return Number(Math.round(value + 'e' + decimals) + 'e-' + decimals);
 };
 

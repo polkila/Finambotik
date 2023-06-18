@@ -200,7 +200,7 @@ settings
 
 ### Обновление
 
-В `.proto` файлах в папке `contracts-finam` были скорректированы пути в секциях `import`. Поэтому в будущем после обновления `.proto` файлов необходимо перепроверить эти пути. Скачать новые можно [по этой ссылке](https://github.com/FinamWeb/trade-api-docs/tree/master/contracts).
+Скачать новые `.proto` файлы можно [по этой ссылке](https://github.com/FinamWeb/trade-api-docs/tree/master/contracts). Затем их нужно поместить в папку `contracts-finam`. 
 
 После обновления `.proto` файлов или менеджера подписок `grpc.js` нужно перезапустить его командой в консоли `pm2 restart pm2.config.js --only grpc`.
 

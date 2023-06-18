@@ -125,10 +125,12 @@ function ticker_subscribe(securityBoard, securityCode){
 
 function market_is_open(ticker){
 	const dateObj = new Date();
+	const day = dateObj.getDay();
 	const hours = dateObj.getHours();
 	const minutes = dateObj.getMinutes();
+	if (!((1<=day && day<=5) || (day===6 && hours<2))) return false;
 	if (ticker.currency==='RUB'){ // Для Российских акций
-		if ((0<=hours && hours<10) || (hours===18 && minutes>=45) || (hours===19 && minutes<5) || (hours===23 && minutes>=50)) return false; // не торговать между 23:45—10:00 и 18:40—19:05
+		if ((0<=hours && hours<10) || (hours===18 && minutes>=45) || (hours===19 && minutes<5) || (hours===23 && minutes>=45)) return false; // не торговать между 23:45—10:00 и 18:40—19:05
 	}else{
 		if ((hours===1 && minutes>=45) || (2<=hours && hours<10)) return false; // не торговать между 1:45—7:01
 	}
@@ -877,6 +879,28 @@ function event_orderbook(data){
 
 
 
+function get_securities(cb){
+    func.cachedJSONfile('cache/securities-finam.json', 600*1000/*10 min*/, function(err, json_data){
+        if (!err && json_data){
+            cb(err, json_data);
+        }else{
+			func.rest('get', '/api/v1/securities', {url: account.api_url, token: account.api_token, qs:{}}, function(err, req_body){
+				if (!err && req_body && req_body.data && req_body.data.securities && req_body.data.securities.length){
+					func.writeJSONfile('cache/securities-finam.json', req_body.data.securities, function(err){
+						cb(null, req_body.data.securities);
+					});
+				}else{
+					console.log(func.dateYmdHis(), 'get /api/v1/securities');
+					console.log('err', err, 'req_body', req_body);
+					msg('Не удалось получить список инструментов');
+				}
+			});
+        }
+    });
+}
+
+
+
 redisSub.on('message', function(channel, data){
 	//console.log(channel, data);
 
@@ -979,10 +1003,10 @@ redisSub.on('message', function(channel, data){
 					// добавить инструмент
 					// add ticker [symbol]
 					if (data.cmd==='add ticker'){
-						func.rest('get', '/api/v1/securities', {url: account.api_url, token: account.api_token, qs:{}}, function(err, req_body){
-							if (!err && req_body && req_body.data && req_body.data.securities){
+						get_securities(function(err, securities){
+							if (!err && securities){
 								let added_count = 0;
-								req_body.data.securities.forEach(function(ticker){
+								securities.forEach(function(ticker){
 								    if (symbols.includes(ticker.board+'.'+ticker.code)){
 								    	//console.log(ticker);
 									    const add_ticker = {symbol: ticker.code};
@@ -993,11 +1017,17 @@ redisSub.on('message', function(channel, data){
 									    add_ticker.currency = ticker.currency==='RUR' ? 'RUB' : ticker.currency;
 									    add_ticker.decimals = ticker.decimals;
 									    add_ticker.minStep = ticker.minStep;
-									    add_ticker.candles = {'15min': [200,1.2]};
-									    add_ticker.added = Date.now();
-									    watch_tickers[ticker.code] = add_ticker;
+									    if (!watch_tickers[ticker.code]){
+									    	add_ticker.candles = {'15min': [200,1.2]};
+										    add_ticker.added = Date.now();
+										    watch_tickers[ticker.code] = add_ticker;
+										    msg('Добавил #'+ticker.code+'\n'+ticker.shortName+'\nЛотность '+add_ticker.lotSize+'\nВалюта '+add_ticker.currency+'\nШаг цены '+(add_ticker.minStep/Math.pow(10, add_ticker.decimals)));
+									    }else{
+										    add_ticker.updated = Date.now();
+										    watch_tickers[ticker.code] = func.mergeDeep(watch_tickers[ticker.code], add_ticker);
+										    msg('Обновил #'+ticker.code+'\n'+ticker.shortName+'\nЛотность '+add_ticker.lotSize+'\nВалюта '+add_ticker.currency+'\nШаг цены '+(add_ticker.minStep/Math.pow(10, add_ticker.decimals)));
+									    }
 									    ticker_init(ticker.board, ticker.code);
-									    msg('Добавил #'+ticker.code+' '+ticker.shortName+'\nЛотность '+add_ticker.lotSize+'\nВалюта '+add_ticker.currency+'\nШаг цены '+(add_ticker.minStep/Math.pow(10, add_ticker.decimals)));
 									    added_count++;
 								    }
 								});
@@ -1006,8 +1036,6 @@ redisSub.on('message', function(channel, data){
 								}else{
 									msg('Инструмент не найден в TradeAPI');
 								}
-							}else{
-								console.log('err', err, 'req_body', req_body);
 							}
 						});
 					}
@@ -1018,7 +1046,7 @@ redisSub.on('message', function(channel, data){
 					if (data.cmd==='delete ticker'){
 						if (watch_tickers[data.symbol]){
 							if (portfolio[data.symbol] && portfolio[data.symbol].positions && Object.keys(portfolio[data.symbol].positions).length){
-								msg('Не могу удалить #'+data.symbol+'. Открыта позиция или выставлен ордер.');
+								msg('Не могу удалить #'+data.symbol+': открыта позиция или выставлен ордер');
 							}else{
 								delete watch_tickers[data.symbol];
 								delete portfolio[data.symbol];
@@ -1582,6 +1610,13 @@ redisSub.on('message', function(channel, data){
 						msg_portfolio();
 					}
 
+					// завершить процесс
+					// shutdown
+					if (data.cmd==='shutdown'){
+						msg('Завершаю процесс');
+						shutdown();
+					}
+
 				}
 
 			}
@@ -1653,8 +1688,26 @@ redisSub.on('message', function(channel, data){
 
 
 
-// stop gracefully
-process.on('SIGINT SIGTERM', function(){
+// Start
+settings_load(function(){
+	console.log('Loaded tickers:', JSON.stringify(watch_tickers, null, 4));
+	console.log('Loaded indicators:', JSON.stringify(data_indicators, null, 4));
+	console.log('Loaded portfolio:', JSON.stringify(portfolio, null, 4));
+	redisSub.subscribe('fbots-cmd'); // команды всем ботам
+	redisSub.subscribe(redis_prefix+'-cmd'); // команды боту
+	console.log(func.dateYmdHis(), redis_prefix, process.pid, 'started');
+	msg(redis_prefix+' запущен', 1);
+	if (production){
+		setTimeout(orders_lookup, 999);
+	}
+	msg_portfolio();
+});
+
+
+setInterval(settings_save, 1000*60); // 1 minute
+
+
+function shutdown(){
 	//msg(redis_prefix+' stopping');
 	redisSub.unsubscribe();
 	redisSub.quit(function(){
@@ -1669,27 +1722,12 @@ process.on('SIGINT SIGTERM', function(){
 			},777);
 		});
 	});
-});
+}
 
 
+// stop gracefully
+process.on('SIGINT SIGTERM', shutdown);
 
-setInterval(settings_save, 1000*60); // 1 minute
 
-
-
-// Start
-settings_load(function(){
-	console.log('Loaded tickers:', JSON.stringify(watch_tickers, null, 4));
-	console.log('Loaded indicators:', JSON.stringify(data_indicators, null, 4));
-	console.log('Loaded portfolio:', JSON.stringify(portfolio, null, 4));
-	redisSub.subscribe('fbots-cmd'); // команды всем ботам
-	redisSub.subscribe(redis_prefix+'-cmd'); // команды боту
-	console.log(func.dateYmdHis(), redis_prefix, process.pid, 'started');
-	msg(redis_prefix+' started', 1);
-	if (production){
-		setTimeout(orders_lookup, 999);
-	}
-	msg_portfolio();
-});
 
 

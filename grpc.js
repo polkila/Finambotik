@@ -52,6 +52,7 @@ const packageDefinition = protoLoader.loadSync([
 	enums: String,
 	defaults: true,
 	oneofs: true,
+	includeDirs: [__dirname + '/contracts-finam'],
 });
 const api = grpc.loadPackageDefinition(packageDefinition).grpc.tradeapi.v1;
 
@@ -108,6 +109,7 @@ function grpc_open(){
 	setTimeout(function(){
 		redisClient.publish('fbots-cmd', JSON.stringify({cmd: 'resubscribe'}));
 	}, 3333);
+	//setInterval(GetOrders, 999*66); // вместо Ping
 }
 
 
@@ -243,7 +245,6 @@ function grpc_data(data){
 			  },
 			  payload: 'order'
 			}
-
 			*/
 		}else
 
@@ -432,7 +433,7 @@ function NewOrder(clientOrderId, direction, security_board, security_code, quant
 
 	const result = orders.NewOrder(params,
 	function(err, response){
-		//console.log('NewOrder err', JSON.stringify(err, null, 4));
+		if (err) console.log('NewOrder err', JSON.stringify(err, null, 4));
 		//console.log('NewOrder response', JSON.stringify(response, null, 4));
 		redisClient.publish('fbots-cmd', JSON.stringify({event: 'NewOrder', clientOrderId: clientOrderId, security_code: security_code, error: err, response: response}));
 	});
@@ -457,7 +458,7 @@ function CancelOrder(transaction_id){
 		"transaction_id": transaction_id,
 	},
 	function(err, response){
-		//console.log('CancelOrder err', JSON.stringify(err, null, 4));
+		if (err) console.log('CancelOrder err', JSON.stringify(err, null, 4));
 		//console.log('CancelOrder response', JSON.stringify(response, null, 4));
 		redisClient.publish('fbots-cmd', JSON.stringify({event: 'CancelOrder', error: err, response: response}));
 	});
@@ -482,7 +483,7 @@ function GetOrders(){
 		"include_matched": true,
 	},
 	function(err, response){
-		//console.log('GetOrders err', JSON.stringify(err, null, 4));
+		if (err) console.log('GetOrders err', JSON.stringify(err, null, 4));
 		//console.log('GetOrders response', JSON.stringify(response, null, 4));
 		redisClient.publish('fbots-cmd', JSON.stringify({event: 'GetOrders', error: err, response: response.orders}));
 	});

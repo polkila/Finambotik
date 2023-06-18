@@ -1044,27 +1044,33 @@ redisSub.on('message', function(channel, data){
 					// удалить инструмент
 					// delete ticker [symbol]
 					if (data.cmd==='delete ticker'){
-						if (watch_tickers[data.symbol]){
-							if (portfolio[data.symbol] && portfolio[data.symbol].positions && Object.keys(portfolio[data.symbol].positions).length){
-								msg('Не могу удалить #'+data.symbol+': открыта позиция или выставлен ордер');
+						symbols.forEach(function(symbol){
+							if (watch_tickers[symbol]){
+								if (portfolio[symbol] && portfolio[symbol].positions && Object.keys(portfolio[symbol].positions).length){
+									msg('Не могу удалить #'+data.symbol+': открыта позиция или выставлен ордер');
+								}else{
+									delete watch_tickers[symbol];
+									delete portfolio[symbol];
+									delete data_indicators[symbol];
+									msg('Удалил инструмент #'+symbol);
+									settings_save();
+								}
 							}else{
-								delete watch_tickers[data.symbol];
-								delete portfolio[data.symbol];
-								delete data_indicators[data.symbol];
-								msg('Удалил инструмент #'+data.symbol);
-								settings_save();
+								msg('Отсутствует инструмент #'+symbol);
 							}
-						}
+						});
 					}
 
 					// переподписаться на инструмент
 					// resubscribe [symbol]
 					if (data.cmd==='resubscribe'){
-						const ticker = watch_tickers[data.symbol];
-						if (ticker){
-							msg('Подписываюсь заново на котировки #'+data.symbol);
-							redisClient.publish('fstream-cmd', JSON.stringify({cmd: data.cmd, symbol: data.symbol, securityBoard: ticker.securityBoard, securityCode: ticker.securityCode}));
-						}
+						symbols.forEach(function(symbol){
+							const ticker = watch_tickers[symbol];
+							if (ticker){
+								msg('Подписываюсь заново на котировки #'+symbol);
+								redisClient.publish('fstream-cmd', JSON.stringify({cmd: data.cmd, symbol: symbol, securityBoard: ticker.securityBoard, securityCode: ticker.securityCode}));
+							}
+						});
 					}
 
 					// купить инструмент
@@ -1236,23 +1242,25 @@ redisSub.on('message', function(channel, data){
 					// stop [buy|sell|trade] [symbol]
 					// start [buy|sell|trade] [symbol]
 					if (data.cmd==='stop' || data.cmd==='start'){
-						const ticker = watch_tickers[data.symbol];
-						if (ticker){
-							const rows = ['#'+data.symbol+' '+(ticker.last_price||'')];
-							if (data.option==='trade' || data.option==='buy'){
-								ticker.stop_buy = data.cmd==='stop';
-								if (ticker.stop_buy) ticker.start_buy_at = false;
-								rows.push((ticker.stop_buy?'Stop':'Start')+' buy');
+						symbols.forEach(function(symbol){
+							const ticker = watch_tickers[symbol];
+							if (ticker){
+								const rows = ['#'+symbol+' '+(ticker.last_price||'')];
+								if (data.option==='trade' || data.option==='buy'){
+									ticker.stop_buy = data.cmd==='stop';
+									if (ticker.stop_buy) ticker.start_buy_at = false;
+									rows.push((ticker.stop_buy?'Stop':'Start')+' buy');
+								}
+								if (data.option==='trade' || data.option==='sell'){
+									ticker.stop_sell = data.cmd==='stop';
+									if (ticker.stop_sell) ticker.stop_sell_at = false;
+									rows.push((ticker.stop_sell?'Stop':'Start')+' sell');
+								}
+								msg(rows.join('\n'));
+							}else{
+								msg('Инструмент #'+symbol+' не добавлен с тратегию. Отправьте команду добавления, например:\nadd ticker TQBR.SBER');
 							}
-							if (data.option==='trade' || data.option==='sell'){
-								ticker.stop_sell = data.cmd==='stop';
-								if (ticker.stop_sell) ticker.stop_sell_at = false;
-								rows.push((ticker.stop_sell?'Stop':'Start')+' sell');
-							}
-							msg(rows.join('\n'));
-						}else{
-							msg('Инструмент #'+data.symbol+' не добавлен с тратегию. Отправьте команду добавления, например:\nadd ticker TQBR.SBER');
-						}
+						});
 					}
 
 					// показать настройки по инструменту

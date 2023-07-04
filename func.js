@@ -241,6 +241,11 @@ const correctFloat = exports.correctFloat = function(number){
 }
 
 
+exports.scientific2decimal = function(scientific){
+	return scientific.num/Math.pow(10, scientific.scale);
+}
+
+
 const isObject = exports.isObject = function(item) {
 	return (item && typeof item === 'object' && !Array.isArray(item));
 }

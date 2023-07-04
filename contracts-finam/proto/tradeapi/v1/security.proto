@@ -4,7 +4,7 @@ package proto.tradeapi.v1;
 
 option csharp_namespace = "Finam.TradeApi.Proto.V1";
 
-import "common.proto";
+import "proto/tradeapi/v1/common.proto";
 
 // Security price sign.
 // Разрешенный знак цены у инструмента.

@@ -43,16 +43,18 @@ let watch_tickers = {
 
 const grpc = require('@grpc/grpc-js');
 const protoLoader = require('@grpc/proto-loader');
+const protoFiles = require('google-proto-files');
 const packageDefinition = protoLoader.loadSync([
 	__dirname + '/contracts-finam/grpc/tradeapi/v1/events.proto',
 	__dirname + '/contracts-finam/grpc/tradeapi/v1/orders.proto',
+	__dirname + '/contracts-finam/grpc/tradeapi/v1/candles.proto',
 ],{
 	keepCase: true,
 	longs: Number,
 	enums: String,
 	defaults: true,
 	oneofs: true,
-	includeDirs: [__dirname + '/contracts-finam'],
+	includeDirs: [protoFiles.getProtoPath('..'), __dirname + '/contracts-finam'],
 });
 const api = grpc.loadPackageDefinition(packageDefinition).grpc.tradeapi.v1;
 
@@ -63,7 +65,7 @@ const channelCred = grpc.credentials.combineChannelCredentials(grpc.credentials.
 	callback(null, authHeaders);
 }));
 
-let stream, orders;
+let stream, orders, candles;
 
 
 
@@ -133,7 +135,7 @@ function grpc_data(data){
 			//console.log('Orderbook', JSON.stringify(data, null, 4));
 			const ticker = watch_tickers[data.order_book.security_code];
 			if (ticker){
-				redisClient.publish('forderbook_'+ticker.symbol, JSON.stringify({event: 'orderbook', payload: data.order_book}));
+				redisClient.publish('forderbook_'+ticker.symbol, JSON.stringify(data));
 			}
 		}else
 
@@ -142,7 +144,7 @@ function grpc_data(data){
 			//console.log('Order data', data);
 			const ticker = watch_tickers[data.order.security_code];
 			if (ticker){
-				redisClient.publish('fbots-cmd', JSON.stringify({event: 'order', payload: data.order}));
+				redisClient.publish('fbots-cmd', JSON.stringify(data));
 			}
 			/*
 			Order data {
@@ -253,7 +255,7 @@ function grpc_data(data){
 			console.log('Trade data', data);
 			const ticker = watch_tickers[data.trade.security_code];
 			if (ticker){
-				redisClient.publish('fbots-cmd', JSON.stringify({event: 'trade', payload: data.trade}));
+				redisClient.publish('fbots-cmd', JSON.stringify(data));
 			}
 			/*
 			data {
@@ -472,12 +474,12 @@ response {
 
 
 
-function GetOrders(){
+function GetOrders(client_id){
 	if (!orders){
 		orders = new api.Orders(config.finam.grpc_server, channelCred);
 	}
 	const result = orders.GetOrders({
-		"client_id": config.finam.trade_id,
+		"client_id": client_id || config.finam.trade_id,
 		"include_active": true,
 		"include_canceled": true,
 		"include_matched": true,
@@ -485,7 +487,7 @@ function GetOrders(){
 	function(err, response){
 		if (err) console.log('GetOrders err', JSON.stringify(err, null, 4));
 		//console.log('GetOrders response', JSON.stringify(response, null, 4));
-		redisClient.publish('fbots-cmd', JSON.stringify({event: 'GetOrders', error: err, response: response.orders}));
+		if (response) redisClient.publish('fbots-cmd', JSON.stringify({event: 'GetOrders', error: err, response: response.orders}));
 	});
 /*
 response {
@@ -517,6 +519,119 @@ response {
         }
     ],
     "client_id": "client_id"
+}
+*/
+}
+
+
+function GetIntradayCandles(security_board, security_code, params){
+	const query = {
+		"interval": {},
+		"security_board": security_board,
+		"security_code": security_code,
+		"time_frame": params.timeFrame || 'INTRADAYCANDLE_TIMEFRAME_M1',
+	};
+	if (params.count) query.interval.count = params.count;
+	if (params.from) query.interval.from = params.from;
+	if (params.fromMs) query.interval.from = {nanos: 0, seconds: String(Math.floor(params.fromMs/1000))};
+	if (params.to) query.interval.to = params.to;
+	if (params.toMs) query.interval.to = {nanos: 0, seconds: String(Math.floor(params.toMs/1000))};
+
+	if (!candles){
+		candles = new api.Candles(config.finam.grpc_server, channelCred);
+	}
+	const result = candles.GetIntradayCandles(query, function(err, response){
+		if (err) console.log('GetIntradayCandles err', JSON.stringify(err, null, 4));
+		//console.log('GetIntradayCandles response', JSON.stringify(response, null, 4));
+		if (response) redisClient.publish('fbots-cmd', JSON.stringify({event: 'GetIntradayCandles', error: err, response: response.candles, queryId: params.queryId, security_code: security_code}));
+	});
+/*
+response {
+    "candles": [
+        {
+            "timestamp": {
+                "seconds": "1686948540",
+                "nanos": 0
+            },
+            "open": {
+                "num": "10674",
+                "scale": 0
+            },
+            "close": {
+                "num": "10671",
+                "scale": 0
+            },
+            "high": {
+                "num": "10677",
+                "scale": 0
+            },
+            "low": {
+                "num": "10670",
+                "scale": 0
+            },
+            "volume": "248"
+        }
+    ]
+}
+*/
+}
+
+
+function GetDayCandles(security_board, security_code, params){
+	const query = {
+		"interval": {},
+		"security_board": security_board,
+		"security_code": security_code,
+		"time_frame": params.timeFrame || 'DAYCANDLE_TIMEFRAME_D1',
+	};
+	if (params.count) query.interval.count = params.count;
+	if (params.from) query.interval.from = params.from;
+	if (params.fromMs){
+		const dateFrom = new Date(params.fromMs);
+		query.interval.from = {day: dateFrom.getDate(), month: dateFrom.getMonth(), year: dateFrom.getFullYear()};
+	}
+	if (params.to) query.interval.to = params.to;
+	if (params.toMs){
+		const dateTo = new Date(params.toMs);
+		query.interval.from = {day: dateTo.getDate(), month: dateTo.getMonth(), year: dateTo.getFullYear()};
+	}
+
+	if (!candles){
+		candles = new api.Candles(config.finam.grpc_server, channelCred);
+	}
+	const result = candles.GetDayCandles(query, function(err, response){
+		if (err) console.log('GetDayCandles err', JSON.stringify(err, null, 4));
+		//console.log('GetDayCandles response', JSON.stringify(response, null, 4));
+		if (response) redisClient.publish('fbots-cmd', JSON.stringify({event: 'GetDayCandles', error: err, response: response.candles, queryId: params.queryId, security_code: security_code}));
+	});
+/*
+response {
+    "candles": [
+        {
+            "date": {
+                "year": 2023,
+                "month": 6,
+                "day": 16
+            },
+            "open": {
+                "num": "10460",
+                "scale": 0
+            },
+            "close": {
+                "num": "10671",
+                "scale": 0
+            },
+            "high": {
+                "num": "10711",
+                "scale": 0
+            },
+            "low": {
+                "num": "104205",
+                "scale": 1
+            },
+            "volume": "239701"
+        }
+    ]
 }
 */
 }
@@ -578,15 +693,23 @@ redisSub.on('message', function(channel, data){
 				}
 
 				if (data.cmd==='NewOrder'){
-					if (watch_tickers[data.securityCode]){
-						NewOrder(data.clientOrderId, data.direction, data.securityBoard, data.securityCode, data.quantity, data.price);
-					}
+					NewOrder(data.clientOrderId, data.direction, data.securityBoard, data.securityCode, data.quantity, data.price);
 				}
 
 				if (data.cmd==='CancelOrder'){
-					if (watch_tickers[data.securityCode]){
-						CancelOrder(data.transaction_id);
-					}
+					CancelOrder(data.transactionId);
+				}
+
+				if (data.cmd==='GetOrders'){
+					GetOrders(data.clientId);
+				}
+
+				if (data.cmd==='GetIntradayCandles'){
+					GetIntradayCandles(data.securityBoard, data.securityCode, data.params);
+				}
+
+				if (data.cmd==='GetDayCandles'){
+					GetDayCandles(data.securityBoard, data.securityCode, data.params);
 				}
 			}
 		}

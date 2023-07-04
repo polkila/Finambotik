@@ -4,9 +4,9 @@ package proto.tradeapi.v1;
 
 option csharp_namespace = "Finam.TradeApi.Proto.V1";
 
-import "common.proto";
-import "orders.proto";
-import "portfolios.proto";
+import "proto/tradeapi/v1/common.proto";
+import "proto/tradeapi/v1/orders.proto";
+import "proto/tradeapi/v1/portfolios.proto";
 import "google/protobuf/timestamp.proto";
 
 // Timeframe.

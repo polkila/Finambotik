@@ -130,7 +130,7 @@ function market_is_open(ticker){
 	const minutes = dateObj.getMinutes();
 	if (!((1<=day && day<=5) || (day===6 && hours<2))) return false;
 	if (ticker.currency==='RUB'){ // Для Российских акций
-		if ((0<=hours && hours<10) || (hours===18 && minutes>=45) || (hours===19 && minutes<5) || (hours===23 && minutes>=45)) return false; // не торговать между 23:45—10:00 и 18:40—19:05
+		if ((0<=hours && hours<10) || (hours===18 && minutes>=45) || (hours===19 && minutes<5) || (hours===23 && minutes>45)) return false; // не торговать между 23:45—10:00 и 18:40—19:05
 	}else{
 		if ((hours===1 && minutes>=45) || (2<=hours && hours<10)) return false; // не торговать между 1:45—7:01
 	}
@@ -272,6 +272,7 @@ function msg_portfolio(){
 				ticker.quantity = position.balance;
 				const avg_price = position.averagePrice, price = func.correctFloat(position.currentPrice), result_percent = func.round((price-avg_price)/avg_price*100, 3)||0;
 				positions.push(ticker.symbol+' '+ticker.quantity+' шт. '+price+' '+(result_percent>0?'+':'')+result_percent+'%');
+				console.log(ticker.symbol, avg_price, price, result_percent+'%');
 			});
 
 			req_body.data.money.forEach(function(item){
@@ -298,7 +299,7 @@ function msg_portfolio(){
 						}
 					}
 					if (position.sell_in_progress){
-						sell_orders.push([position.quantity, '#'+symbol, position.buy_price].join(' '));
+						sell_orders.push([position.quantity, '#'+symbol, position.sell_price].join(' '));
 					}
 				});
 			});
@@ -320,7 +321,7 @@ function msg_portfolio(){
 
 			msg(func.round(totalSum, 2)+' RUB' +
 				'\nДоступно: '+settings.balance.RUB +' RUB'+
-				(positions.length?'\n\nПозиции:\n'+positions.join('\n'):'') +
+				(positions.length?'\n\nПозиции:\n'+positions.sort().join('\n'):'') +
 				(!positions.length?'\n\nНет открытых позиций':'') +
 				(sell_orders.length?'\n\nОрдер на продажу:\n'+sell_orders.join('\n'):'') +
 				(buy_orders.length?'\n\nОрдер на покупку:\n'+buy_orders.join('\n'):'') +
@@ -517,10 +518,13 @@ function ticker_buy(securityBoard, securityCode, price, interval, force_buy, com
 
 					}else{
 						console.error(func.dateYmdHis(), 'Cancel buy', quantity, ticker.symbol, buy_price, interval, 'out of balance');
-						msg(
-							'*Покупка* #'+ticker.symbol+' '+buy_price+' '+interval+'\n'+
-							'Недостаточно средств.'
-						);
+						if (!ticker.msg_nsf || ticker.msg_nsf < Date.now() - 1000*3600*6){ // 6 hours
+							ticker.msg_nsf = Date.now();
+							msg(
+								'*Покупка* '+quantity+' #'+ticker.symbol+' '+buy_price+' '+interval+'\n'+
+								'Недостаточно средств.'
+							);
+						}
 					}
 
 				}else{
@@ -735,7 +739,7 @@ function ticker_cancel(securityBoard, securityCode, position, force_cancel){
 			cmd: 'CancelOrder',
 			securityBoard: securityBoard,
 			securityCode: securityCode,
-			transaction_id: position.transaction_id,
+			transactionId: position.transaction_id,
 		}));
 	}
 }
@@ -769,11 +773,11 @@ function msg_sold(timestamp, securityCode, position, _quantity){
 
 
 
-function update_indicators(candle){
-	const ticker = watch_tickers[candle.securityCode];
+function update_indicators(candle, no_signals){
+	const ticker = watch_tickers[candle.security_code];
 
 	if (ticker.candles[candle.interval]){
-		const vars = data_indicators[candle.securityCode][candle.interval];
+		const vars = data_indicators[candle.security_code][candle.interval];
 
 		const prev_ema200 = vars.ema200 && vars.ema200.EMAvalue;
 		const prev_ema12 = vars.ema12 && vars.ema12.EMAvalue;
@@ -813,13 +817,15 @@ function update_indicators(candle){
 								// buy
 								vars.last_signal = 'buy';
 								vars.last_signal_at = func.dateYmdHis();
-								if (!settings.stop_buy && !ticker.stop_buy){
-									ticker_buy(ticker.securityBoard, ticker.securityCode, ticker.buy_price, candle.interval, false);
-								}else{
-									msg(
-										'Сигнал на *покупку* #'+ticker.symbol+' *'+ticker.buy_price+'* '+candle.interval+'\n'+
-										'Выключена покупка'
-									);
+								if (!no_signals){
+									if (!settings.stop_buy && !ticker.stop_buy){
+										ticker_buy(ticker.securityBoard, ticker.securityCode, ticker.buy_price, candle.interval, false);
+									}else{
+										msg(
+											'Сигнал на *покупку* #'+ticker.symbol+' *'+ticker.buy_price+'* '+candle.interval+'\n'+
+											'Выключена покупка'
+										);
+									}
 								}
 							}
 						}
@@ -830,13 +836,15 @@ function update_indicators(candle){
 				if (0){ // здесь можно придумать условия, при выполнении которых возникнет сигнал на продажу; а пока что продажа происходит по СЛ и ТП
 					vars.last_signal = 'sell';
 					vars.last_signal_at = func.dateYmdHis();
-					if (!settings.stop_sell && !ticker.stop_sell){
-						ticker_sell(ticker.securityBoard, ticker.securityCode, ticker.sell_price, candle.interval, false);
-					}else{
-						msg(
-							'Сигнал на *продажу* #'+ticker.symbol+' *'+ticker.sell_price+'* '+candle.interval+'\n'+
-							'Выключена продажа'
-						);
+					if (!no_signals){
+						if (!settings.stop_sell && !ticker.stop_sell){
+							ticker_sell(ticker.securityBoard, ticker.securityCode, ticker.sell_price, candle.interval, false);
+						}else{
+							msg(
+								'Сигнал на *продажу* #'+ticker.symbol+' *'+ticker.sell_price+'* '+candle.interval+'\n'+
+								'Выключена продажа'
+							);
+						}
 					}
 				}
 			}
@@ -846,34 +854,58 @@ function update_indicators(candle){
 
 
 
-function event_candle(data){}
+
+setTimeout(function(){
+	setInterval(function(){
+		const dateObj = new Date(), hours = dateObj.getHours(), minutes = dateObj.getMinutes();
+		Object.keys(watch_tickers).forEach(function(securityCode){
+			const ticker = watch_tickers[securityCode];
+			if (market_is_open(ticker)){
+				Object.keys(ticker.candles).forEach(function(interval){
+					const interval_minutes = func.interval_to_minutes(interval);
+					if ((hours*60+minutes)%interval_minutes===0){
+						get_candles(ticker.securityBoard, ticker.securityCode, {timeFrame: 'INTRADAYCANDLE_TIMEFRAME_M15', count: 1}, function(err, resp){
+							if (!err && resp && resp.length){
+								const candles = resp.map(function(candle){return {security_code: ticker.securityCode, interval: '15min', timestamp: candle.timestamp.seconds*1000, time: new Date(candle.timestamp.seconds*1000).toISOString(), o: func.scientific2decimal(candle.open), h: func.scientific2decimal(candle.high), l: func.scientific2decimal(candle.low), c: func.scientific2decimal(candle.close), v: candle.volume}});
+								event_candle({candle:candles.pop()});
+							}else{
+								console.log(func.dateYmdHis(), 'get_candles()', securityCode, interval);
+								console.log('err', err);
+								console.log('resp', resp);
+							}
+						});
+					}
+				});
+			}
+		});
+	}, 1000*60); // Каждую минуту
+}, 1000*(61-new Date().getSeconds())); // Дождаться 1-й секунды новой минуты
+
+
+
+function event_candle(data){
+	//console.log(data);
+	const vars = data_indicators[data.candle.security_code] && data_indicators[data.candle.security_code][data.candle.interval];
+	if (vars){
+		if (vars.last_candle.time < data.candle.time){
+			update_indicators(data.candle);
+			vars.last_candle = data.candle;
+		}
+	}
+}
 
 
 
 function event_orderbook(data){
-	if (data.payload.bids && data.payload.asks && data.payload.bids[0] && data.payload.bids[0].price && data.payload.asks[0] && data.payload.asks[0].price){
-		const ticker = watch_tickers[data.payload.security_code];
+	if (data.order_book.bids && data.order_book.asks && data.order_book.bids[0] && data.order_book.bids[0].price && data.order_book.asks[0] && data.order_book.asks[0].price){
+		const ticker = watch_tickers[data.order_book.security_code];
 		//ticker.last_price = ?;
-		ticker.buy_price = func.correctFloat(data.payload.asks[0].price);
-		ticker.sell_price = func.correctFloat(data.payload.bids[0].price);
+		ticker.buy_price = func.correctFloat(data.order_book.asks[0].price);
+		ticker.sell_price = func.correctFloat(data.order_book.bids[0].price);
 
 		if (!settings.stop_sell && !ticker.stop_sell){
 			ticker_sell(ticker.securityBoard, ticker.securityCode, ticker.sell_price, null, false);
 		}
-
-		const dateObj = new Date(), hours = dateObj.getHours(), minutes = dateObj.getMinutes();
-		dateObj.setSeconds(0, 0);
-		const time = dateObj.toISOString();
-		Object.keys(ticker.candles).forEach(function(interval){
-			const vars = data_indicators[data.payload.security_code] && data_indicators[data.payload.security_code][interval];
-			const interval_minutes = func.interval_to_minutes(interval);
-			if (vars && (hours*60+minutes)%interval_minutes===0 && vars.last_candle.time < time){
-				vars.last_candle = {securityCode: data.payload.security_code, interval: interval, c: func.round((ticker.buy_price+ticker.sell_price)/2, ticker.decimals), time: time, timestamp: dateObj.getTime()};
-				update_indicators(vars.last_candle);
-				//console.log(time);
-				//console.log('new candle', vars.last_candle);
-			}
-		});
 	}
 }
 
@@ -890,13 +922,38 @@ function get_securities(cb){
 						cb(null, req_body.data.securities);
 					});
 				}else{
-					console.log(func.dateYmdHis(), 'get /api/v1/securities');
-					console.log('err', err, 'req_body', req_body);
+					console.log(func.dateYmdHis(), 'get_securities()');
+					console.log('err', err);
+					console.log('req_body', req_body);
 					msg('Не удалось получить список инструментов');
 				}
 			});
         }
     });
+}
+
+
+const callbacks = {};
+
+
+function get_candles(securityBoard, securityCode, params, cb){
+	params = params || {};
+	const timestamp = Date.now(), queryId = securityCode+timestamp;
+	if (cb) callbacks[queryId] = function(err, resp){
+		cb(err, resp);
+		delete callbacks[queryId];
+	};
+	redisClient.publish('fstream-cmd', JSON.stringify({
+		cmd: 'GetIntradayCandles',
+		securityBoard: securityBoard,
+		securityCode: securityCode,
+		params: {
+			queryId: queryId,
+			timeFrame: params.timeFrame || 'INTRADAYCANDLE_TIMEFRAME_M15',
+			count: params.count || 1,
+			toMs: timestamp,
+		}
+	}));
 }
 
 
@@ -916,82 +973,6 @@ redisSub.on('message', function(channel, data){
 
 
 			/* COMMANDS */
-
-			if (channel==='fbots-cmd'){
-				if (data.cmd==='resubscribe'){
-					setTimeout(subscribe_all, 1111);
-				}
-
-				if (data.event==='NewOrder'){
-					if (data.response && data.response.security_code && portfolio[data.response.security_code] && portfolio[data.response.security_code].positions){
-						const position = portfolio[data.response.security_code].positions[data.clientOrderId];
-						if (position){
-							position.transaction_id = data.response.transaction_id;
-						}
-					}
-					if (data.error){
-						console.log(func.dateYmdHis(), 'NewOrder error', JSON.stringify(data.error, null, 4));
-						const position = portfolio[data.security_code] && portfolio[data.security_code].positions && portfolio[data.security_code].positions[data.clientOrderId];
-						if (position){
-							if (position.buy_in_progress){
-								delete portfolio[data.security_code].positions[data.clientOrderId];
-							}
-							if (position.sell_in_progress){
-								delete position.sell_in_progress;
-								delete position.sell_price;
-								delete position.force_sell;
-							}
-						}
-						if (data.error.details && data.error.details.indexOf('enough coverage')){
-							msg('Недостаточно средств, необходимо'+data.error.details.split('need').pop());
-						}else{
-							msg(func.markdown_escape(JSON.stringify(data.error, null, 4)));
-						}
-					}
-				}
-
-				if (data.event==='CancelOrder'){
-					if (data.error){
-						console.log(func.dateYmdHis(), 'CancelOrder error', JSON.stringify(data.error, null, 4));
-						msg(func.markdown_escape(JSON.stringify(data.error, null, 4)));
-					}
-				}
-
-				if (data.event==='order'){
-					if (data.payload && data.payload.transaction_id && (data.payload.status==='ORDER_STATUS_MATCHED'||data.payload.status==='ORDER_STATUS_CANCELLED') && portfolio[data.payload.security_code] && portfolio[data.payload.security_code].positions){
-						Object.keys(portfolio[data.payload.security_code].positions).forEach(function(position_key){
-							const position = portfolio[data.payload.security_code].positions[position_key];
-							if (position.transaction_id===data.payload.transaction_id){
-								if (data.payload.status==='ORDER_STATUS_MATCHED'){
-									if (position.buy_in_progress){
-										if (data.payload.price < position.buy_price) position.buy_price = data.payload.price;
-										msg_bought(position_key, data.payload.security_code, position);
-										delete position.buy_in_progress;
-									}
-									if (position.sell_in_progress){
-										if (data.payload.price > position.sell_price) position.sell_price = data.payload.price;
-										msg_sold(position_key, data.payload.security_code, func.mergeDeep({}, position));
-										delete portfolio[data.payload.security_code].positions[position_key];
-									}
-								}
-								if (data.payload.status==='ORDER_STATUS_CANCELLED'){
-									msg('*Отменил '+(position.buy_in_progress?'покупку':'')+(position.sell_in_progress?'продажу':'')+'* '+position.quantity+' #'+data.payload.security_code);
-									if (position.buy_in_progress){
-										delete portfolio[data.payload.security_code].positions[position_key];
-									}
-									if (position.sell_in_progress){
-										delete position.cancel_in_progress;
-										delete position.sell_in_progress;
-										delete position.sell_price;
-										delete position.force_sell;
-									}
-								}
-							}
-						});
-					}
-				}
-			}
-
 
 			if (channel===redis_prefix+'-cmd'){
 				console.log('Redis', channel, data);
@@ -1029,6 +1010,21 @@ redisSub.on('message', function(channel, data){
 									    }
 									    ticker_init(ticker.board, ticker.code);
 									    added_count++;
+									    get_candles(ticker.board, ticker.code, {timeFrame: 'INTRADAYCANDLE_TIMEFRAME_M15', count: 333}, function(err, resp){
+										    if (!err && resp && resp.length){
+											    resp.pop();
+										    	console.log('resp.length', resp.length);
+										    	console.log(resp[0]);
+										    	console.log(resp[resp.length-1]);
+											    resp.map(function(candle, i){return {security_code: ticker.code, interval: '15min', timestamp: candle.timestamp.seconds*1000, time: new Date(candle.timestamp.seconds*1000).toISOString(), o: func.scientific2decimal(candle.open), h: func.scientific2decimal(candle.high), l: func.scientific2decimal(candle.low), c: func.scientific2decimal(candle.close), v: candle.volume}}).forEach(function(candle){
+												    update_indicators(candle, true);
+											    });
+										    }else{
+											    console.log(func.dateYmdHis(), 'get_candles()', ticker.code);
+											    console.log('err', err);
+											    console.log('resp', resp);
+										    }
+									    });
 								    }
 								});
 								if (added_count){
@@ -1629,60 +1625,138 @@ redisSub.on('message', function(channel, data){
 
 			}
 
-			/* STREAM */
 
-			if (data.event==='orderbook' || data.event==='order'){
+			if (channel==='fbots-cmd'){
+				if (data.cmd==='resubscribe'){
+					setTimeout(subscribe_all, 1111);
+				}
 
-				if (data.payload && data.payload.security_code){
-
-					if (watch_tickers[data.payload.security_code]){
-						//console.log(func.dateYmdHis(), data.event, watch_tickers[data.payload.security_code].symbol);
-
-						// orderbook
-						if (data.event==='orderbook'){
-
-							event_orderbook(data);
-
-							/*if (watch_tickers[data.payload.security_code].symbol==='GAZP'){
-								console.log(func.dateYmdHis(), watch_tickers[data.payload.security_code].symbol, 'orderbook', data);
-							}*/
-						}else
-
-						// trades
-						if (data.event==='order'){
-
-							//event_order_trades(data);
-
-							/*if (watch_tickers[data.payload.security_code].symbol==='GAZP'){
-								console.log(func.dateYmdHis(), watch_tickers[data.payload.security_code].symbol, 'order', data);
-							}*/
-
-						}else{
-
-							console.error('ERROR: unrecognized data.event');
-							console.error(func.dateYmdHis(), 'data', data);
-							console.error();
-
+				if (data.event==='NewOrder'){
+					if (data.response && data.response.security_code && portfolio[data.response.security_code] && portfolio[data.response.security_code].positions){
+						const position = portfolio[data.response.security_code].positions[data.clientOrderId];
+						if (position){
+							position.transaction_id = data.response.transaction_id;
 						}
-
 					}
+					if (data.error){
+						console.log(func.dateYmdHis(), 'NewOrder error', JSON.stringify(data.error, null, 4));
+						const position = portfolio[data.security_code] && portfolio[data.security_code].positions && portfolio[data.security_code].positions[data.clientOrderId];
+						if (position){
+							if (position.buy_in_progress){
+								delete portfolio[data.security_code].positions[data.clientOrderId];
+							}
+							if (position.sell_in_progress){
+								delete position.sell_in_progress;
+								delete position.sell_price;
+								delete position.force_sell;
+							}
+						}
+						if (data.error.details && data.error.details.indexOf('enough coverage')){
+							msg(data.error.details);
+						}else{
+							msg(func.markdown_escape(JSON.stringify(data.error, null, 4)));
+						}
+					}
+				}
 
-				}else{
+				if (data.event==='CancelOrder'){
+					if (data.error){
+						console.log(func.dateYmdHis(), 'CancelOrder error', JSON.stringify(data.error, null, 4));
+						msg(func.markdown_escape(JSON.stringify(data.error, null, 4)));
+					}
+				}
 
-					console.error('ERROR: !data.payload.security_code');
-					console.error(func.dateYmdHis(), 'data', data);
-					console.error();
+				if (data.order){
+					if (data.order && data.order.transaction_id && (data.order.status==='ORDER_STATUS_MATCHED'||data.order.status==='ORDER_STATUS_CANCELLED') && portfolio[data.order.security_code] && portfolio[data.order.security_code].positions){
+						Object.keys(portfolio[data.order.security_code].positions).forEach(function(position_key){
+							const position = portfolio[data.order.security_code].positions[position_key];
+							if (position.transaction_id===data.order.transaction_id){
+								if (data.order.status==='ORDER_STATUS_MATCHED'){
+									if (position.buy_in_progress){
+										if (data.order.price < position.buy_price) position.buy_price = data.order.price;
+										msg_bought(position_key, data.order.security_code, position);
+										delete position.buy_in_progress;
+									}
+									if (position.sell_in_progress){
+										if (data.order.price > position.sell_price) position.sell_price = data.order.price;
+										msg_sold(position_key, data.order.security_code, func.mergeDeep({}, position));
+										delete portfolio[data.order.security_code].positions[position_key];
+									}
+								}
+								if (data.order.status==='ORDER_STATUS_CANCELLED'){
+									msg('*Отменил '+(position.buy_in_progress?'покупку':'')+(position.sell_in_progress?'продажу':'')+'* '+position.quantity+' #'+data.order.security_code);
+									if (position.buy_in_progress){
+										delete portfolio[data.order.security_code].positions[position_key];
+									}
+									if (position.sell_in_progress){
+										delete position.cancel_in_progress;
+										delete position.sell_in_progress;
+										delete position.sell_price;
+										delete position.force_sell;
+									}
+								}
+							}
+						});
+					}
+				}
 
+
+				if (data.event==='GetIntradayCandles'){
+					if (callbacks[data.queryId]) callbacks[data.queryId](data.error, data.response);
+					else{
+						console.log('!callbacks[data.queryId]', Object.keys(callbacks), data);
+					}
 				}
 			}
 
-		}else{
 
+			/* STREAM */
+
+			if (data.order_book || data.trade){
+
+				// orderbook
+				if (data.order_book){
+					if (data.order_book.security_code && watch_tickers[data.order_book.security_code]){
+						//console.log(func.dateYmdHis(), data.event, watch_tickers[data.order_book.security_code].symbol);
+
+						event_orderbook(data);
+
+						/*if (watch_tickers[data.order_book.security_code].symbol==='GAZP'){
+							console.log(func.dateYmdHis(), watch_tickers[data.order_book.security_code].symbol, 'orderbook', data);
+						}*/
+					}else{
+						/*console.error('ERROR: !data.order_book.security_code');
+						console.error(func.dateYmdHis(), 'data', data);
+						console.error();*/
+					}
+
+				}else
+
+				// trades
+				if (data.trade){
+					if (data.trade.security_code && watch_tickers[data.trade.security_code]){
+						//console.log(func.dateYmdHis(), data.event, watch_tickers[data.trade.security_code].symbol);
+
+						//event_order_trades(data);
+
+						/*if (watch_tickers[data.trade.security_code].symbol==='GAZP'){
+							console.log(func.dateYmdHis(), watch_tickers[data.trade.security_code].symbol, 'order', data);
+						}*/
+					}else{
+						console.error('ERROR: !data.trade.security_code');
+						console.error(func.dateYmdHis(), 'data', data);
+						console.error();
+					}
+				}
+
+			}
+
+		}else{
 			console.error('ERROR: data !object');
 			console.error(func.dateYmdHis(), 'data', data);
 			console.error();
-
 		}
+
 
 	}else{
 

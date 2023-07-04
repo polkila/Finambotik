@@ -6,7 +6,7 @@ option csharp_namespace = "Finam.TradeApi.Proto.V1";
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/wrappers.proto";
-import "common.proto";
+import "proto/tradeapi/v1/common.proto";
 
 // Order placement properties.
 // Поведение заявки при выставлении в стакан.

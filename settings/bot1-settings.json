@@ -1,7 +1,7 @@
 {
 	"balance": {
 		"USD": 0,
-		"RUB": 3000.62
+		"RUB": 3000
 	},
 	"max_position": {
 		"USD": 100,
@@ -10,5 +10,5 @@
 	"stop_buy": false,
 	"stop_sell": false,
 	"stop_loss": -99,
-	"take_profit": 10
+	"take_profit": 99
 }

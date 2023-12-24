@@ -93,6 +93,7 @@ function grpc_open(){
 	connected = true;
 	time_connected = Date.now();
 	console.log(func.dateYmdHis(), redis_prefix, 'connected');
+	//redisClient.publish('ftelegram-bot', JSON.stringify({cmd:'private', text:'connected'}));
 	if (reconnect_number) console.log(redis_prefix, 'Offline duration', (time_connected-time_disconnected)/1000, 'sec');
 	console.log();
 
@@ -111,7 +112,8 @@ function grpc_open(){
 	setTimeout(function(){
 		redisClient.publish('fbots-cmd', JSON.stringify({cmd: 'resubscribe'}));
 	}, 3333);
-	//setInterval(GetOrders, 999*66); // вместо Ping
+
+	setInterval(send_keepalive, 999*66*3); // вместо Ping
 }
 
 
@@ -333,6 +335,21 @@ function queue_dispatch(){
 
 
 
+function send_keepalive(){
+	const request_id = Date.now();
+	grpc_send({
+		query: {
+			"keep_alive_request": {
+				"request_id": String(request_id)
+			}
+		},
+		callback: function(){
+			console.log(func.dateYmdHis(), redis_prefix, 'Sent keepalive packet');
+		},
+	});
+}
+
+
 function subscribe_trades(){
 	total_subscriptions++;
 	const request_id = Date.now();
@@ -419,25 +436,27 @@ function resubscribe(security_board, security_code){
 }
 
 
-function NewOrder(clientOrderId, direction, security_board, security_code, quantity, price){
+function NewOrder(data){
 	if (!orders){
 		orders = new api.Orders(config.finam.grpc_server, channelCred);
 	}
+
 	const params = {
-		"client_id": config.finam.trade_id,
-		"security_board": security_board,
-		"security_code": security_code,
-		"buy_sell": direction==='Buy'?'BUY_SELL_BUY':'BUY_SELL_SELL',
-		"quantity": quantity,
+		"client_id": data.clientId,
+		"security_board": data.securityBoard,
+		"security_code": data.securityCode,
+		"buy_sell": data.direction==='Buy'?'BUY_SELL_BUY':'BUY_SELL_SELL',
+		"quantity": data.quantity,
 		"property": "ORDER_PROPERTY_PUT_IN_QUEUE",
 	};
-	if (price) params.price = {value: price};
+	if (data.price) params.price = {value: data.price};
 
-	const result = orders.NewOrder(params,
-	function(err, response){
-		if (err) console.log('NewOrder err', JSON.stringify(err, null, 4));
-		//console.log('NewOrder response', JSON.stringify(response, null, 4));
-		redisClient.publish('fbots-cmd', JSON.stringify({event: 'NewOrder', clientOrderId: clientOrderId, security_code: security_code, error: err, response: response}));
+	//console.log(func.dateYmdHis(), 'NewOrder()', params);
+
+	const result = orders.NewOrder(params, function(err, response){
+		if (err) console.log(func.dateYmdHis(), 'NewOrder err', JSON.stringify(err, null, 4));
+		console.log(func.dateYmdHis(), 'NewOrder response', JSON.stringify(response, null, 4));
+		redisClient.publish('fbots-cmd', JSON.stringify({event: 'NewOrder', clientOrderId: data.clientOrderId, security_code: data.securityCode, error: err, response: response}));
 	});
 /*
 error {"code":3,"details":"[156]Money shortage by value of 1608.94 (max. acceptable value - 0 lot.)","metadata":{"content-type":["application/grpc"],"date":["Wed, 17 May 2023 17:17:09 GMT"],"content-length":["0"],"strict-transport-security":["max-age=2592000"]}}}
@@ -458,8 +477,7 @@ function CancelOrder(transaction_id){
 	const result = orders.CancelOrder({
 		"client_id": config.finam.trade_id,
 		"transaction_id": transaction_id,
-	},
-	function(err, response){
+	}, function(err, response){
 		if (err) console.log('CancelOrder err', JSON.stringify(err, null, 4));
 		//console.log('CancelOrder response', JSON.stringify(response, null, 4));
 		redisClient.publish('fbots-cmd', JSON.stringify({event: 'CancelOrder', error: err, response: response}));
@@ -483,8 +501,7 @@ function GetOrders(client_id){
 		"include_active": true,
 		"include_canceled": true,
 		"include_matched": true,
-	},
-	function(err, response){
+	}, function(err, response){
 		if (err) console.log('GetOrders err', JSON.stringify(err, null, 4));
 		//console.log('GetOrders response', JSON.stringify(response, null, 4));
 		if (response) redisClient.publish('fbots-cmd', JSON.stringify({event: 'GetOrders', error: err, response: response.orders}));
@@ -693,7 +710,7 @@ redisSub.on('message', function(channel, data){
 				}
 
 				if (data.cmd==='NewOrder'){
-					NewOrder(data.clientOrderId, data.direction, data.securityBoard, data.securityCode, data.quantity, data.price);
+					NewOrder(data);
 				}
 
 				if (data.cmd==='CancelOrder'){

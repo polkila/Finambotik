@@ -107,6 +107,47 @@ exports.writeJSONfile = function(filename, data, cb){
 /* Indicators */
 
 
+// Simple Moving Average
+exports.SMA = function(_period, _vars){
+	let period = _period || 10,
+		points = [],
+		SMAvalue;
+
+	this.loadVars = function(vars){
+		if (vars){
+			points = vars.points || [];
+		}
+	}
+
+	if (_vars){
+		this.loadVars(_vars);
+	}
+
+	this.addPoint = function(x, y){
+		if (points.unshift(y) > period) points = points.slice(0, period);
+		if (points.length===period){
+			let sum = 0, i = 0;
+			for(; i < points.length; i++){
+				sum += points[i];
+			}
+			SMAvalue = sum / period;
+		}
+	};
+
+	this.getValue = function(){
+		return SMAvalue;
+	};
+
+	this.getVars = function(){
+		return {
+			points: points,
+			SMAvalue: SMAvalue,
+		}
+	};
+}
+
+
+
 // Exponential Moving Average
 exports.EMA = function(_period, _vars){
 	let period = _period || 20,
@@ -146,6 +187,101 @@ exports.EMA = function(_period, _vars){
 	this.getVars = function(){
 		if (EMAvalue) return {EMAvalue: EMAvalue};
 		else return {count: count, sum: sum};
+	};
+}
+
+
+
+// Relative Strength Index
+exports.RSI = function(_period, _decimals, _vars){
+	let period = _period || 14,
+		decimals = _decimals || 4,
+		count = 0,
+		prevY,
+		gain = 0,
+		loss = 0,
+		change,
+		avgGain,
+		avgLoss,
+		RSIvalue = null;
+
+	this.loadVars = function(vars){
+		if (vars){
+			count = vars.count || 0;
+			prevY = vars.prevY;
+			gain = vars.gain || 0;
+			loss = vars.loss || 0;
+			change = vars.change;
+			avgGain = vars.avgGain;
+			avgLoss = vars.avgLoss;
+			RSIvalue = vars.RSIvalue;
+		}
+	}
+
+	if (_vars){
+		this.loadVars(_vars);
+	}
+
+	this.calcRSI = function(y){
+		change = toFixed(y - prevY, decimals);
+		if (change > 0){
+			gain = change;
+			loss = 0;
+		}else{
+			gain = 0;
+			loss = Math.abs(change);
+		}
+		avgGain = toFixed((avgGain * (period - 1) + gain) / period, decimals);
+		avgLoss = toFixed((avgLoss * (period - 1) + loss) / period, decimals);
+		if (avgLoss === 0){
+			return 100;
+		}else if (avgGain === 0){
+			return 0;
+		}else{
+			return toFixed(100 - (100 / (1 + (avgGain / avgLoss))), decimals);
+		}
+	};
+
+	this.addPoint = function(x, y){
+		if (RSIvalue){
+			RSIvalue = this.calcRSI(y);
+		}else{
+			if (count === period){
+				avgGain = toFixed(gain / (period - 1), decimals);
+				avgLoss = toFixed(loss / (period - 1), decimals);
+				RSIvalue = this.calcRSI(y);
+			}else{
+				if (count>0){
+					change = toFixed(y - prevY, decimals);
+					if (change > 0){
+						gain += change;
+					}else{
+						loss += Math.abs(change);
+					}
+				}
+			}
+			count++;
+		}
+		prevY = y;
+	};
+
+	this.getValue = function(){
+		return RSIvalue;
+	};
+
+	this.getVars = function(){
+		const result = {
+			count: count,
+			prevY: prevY,
+			gain: gain,
+			loss: loss,
+			change: change,
+			avgGain: avgGain,
+			avgLoss: avgLoss,
+			RSIvalue: RSIvalue,
+		};
+		if (RSIvalue!==null) delete result.count;
+		return result;
 	};
 }
 
@@ -241,6 +377,11 @@ const correctFloat = exports.correctFloat = function(number){
 }
 
 
+const toFixed = exports.toFixed = function(value, decimals){
+	return parseFloat(value.toFixed(decimals));
+}
+
+
 exports.scientific2decimal = function(scientific){
 	return scientific.num/Math.pow(10, scientific.scale);
 }
@@ -278,6 +419,21 @@ const round = exports.round = function(value, decimals){
 };
 
 
+exports.get_timeframe_id = function(interval){
+	switch (interval){
+		default:
+		case '1min':
+			return 'INTRADAYCANDLE_TIMEFRAME_M1';
+		case '5min':
+			return 'INTRADAYCANDLE_TIMEFRAME_M5';
+		case '15min':
+			return 'INTRADAYCANDLE_TIMEFRAME_M15';
+		case 'hour':
+			return 'INTRADAYCANDLE_TIMEFRAME_H1';
+	}
+}
+
+
 exports.interval_to_minutes = function(interval){
 	switch (interval){
 		case '1min':
@@ -308,7 +464,6 @@ exports.interval_to_minutes = function(interval){
 			return 60*2;
 	}
 }
-
 
 
 exports.swapKeyValue = function(obj){

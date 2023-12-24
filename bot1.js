@@ -26,7 +26,7 @@ let settings = {
 	balance: {USD: 0, RUB: 0},
 	max_position: {USD: 33, RUB: 3333}, // максимальный размер позиции
 	min_price_offset: 3, // при повторной покупке, цена должна отличаться на 3% и более
-	max_positions: 3, // количество покупок на 1 инструмент
+	max_positions: 5, // количество покупок на 1 инструмент
 	stop_buy: false,
 	stop_sell: false,
 	stop_loss: -99,
@@ -98,7 +98,7 @@ function ticker_init(securityBoard, securityCode){
 	// candles
 	if (!data_indicators[securityCode]) data_indicators[securityCode] = {};
 	Object.keys(ticker.candles).forEach(function(interval){
-		if (!data_indicators[securityCode][interval]) data_indicators[securityCode][interval] = {last_candle: {securityCode: securityCode, interval: interval, c: 0, time: ''}};
+		if (!data_indicators[securityCode][interval]) data_indicators[securityCode][interval] = {last_candle: {security_code: securityCode, interval: interval, timestamp: 0, time: '', c: 0}};
 		//redisSub.subscribe('fcandle_'+securityCode+'_'+interval);
 	});
 
@@ -146,7 +146,7 @@ function settings_save(cb){
 			//console.log('Saved settings');
 		}else{
 			console.error(func.dateYmdHis(), 'settings_save() ERROR save vars', err);
-			console.log('settings: ', JSON.stringify(settings, null, 4));
+			console.error('settings: ', JSON.stringify(settings, null, 4));
 			msg('settings_save() ERROR save settings');
 		}
 
@@ -157,7 +157,7 @@ function settings_save(cb){
 				//console.log('tickers', JSON.stringify(tickers, null, 4));
 			}else{
 				console.error(func.dateYmdHis(), 'settings_save() ERROR save watch_tickers', err);
-				console.log('tickers: ', JSON.stringify(watch_tickers, null, 4));
+				console.error('tickers: ', JSON.stringify(watch_tickers, null, 4));
 				msg('settings_save() ERROR save watch_tickers');
 			}
 
@@ -167,7 +167,7 @@ function settings_save(cb){
 					//console.log('Saved portfolio');
 				}else{
 					console.error(func.dateYmdHis(), 'settings_save() ERROR save portfolio', err);
-					console.log('portfolio: ', JSON.stringify(portfolio, null, 4));
+					console.error('portfolio: ', JSON.stringify(portfolio, null, 4));
 					//msg('settings_save() ERROR save portfolio\n'+JSON.stringify(err, null, 4));
 				}
 
@@ -177,7 +177,7 @@ function settings_save(cb){
 						//console.log('Saved indicators');
 					}else{
 						console.error(func.dateYmdHis(), 'settings_save() ERROR save indicators', err);
-						console.log('indicators: ', JSON.stringify(data_indicators, null, 4));
+						console.error('indicators: ', JSON.stringify(data_indicators, null, 4));
 						msg('settings_save() ERROR save indicators');
 					}
 
@@ -198,7 +198,7 @@ function settings_load(cb){
 			settings = func.mergeDeep({}, settings, JSON.parse(data.toString()));
 		}else{
 			console.error(func.dateYmdHis(), 'settings_load() ERROR load vars\n', err);
-			console.log('settings: ', data);
+			console.error('settings: ', data);
 			//msg('settings_load() ERROR load settings\n'+JSON.stringify(err, null, 4));
 		}
 
@@ -209,7 +209,7 @@ function settings_load(cb){
 				watch_tickers = JSON.parse(data.toString());
 			}else{
 				console.error(func.dateYmdHis(), 'settings_load() ERROR load tickers\n', err);
-				console.log('tickers: ', data);
+				console.error('tickers: ', data);
 				//msg('settings_load() ERROR load tickers\n'+JSON.stringify(err, null, 4));
 			}
 
@@ -220,7 +220,7 @@ function settings_load(cb){
 					portfolio = JSON.parse(data.toString());
 				}else{
 					console.error(func.dateYmdHis(), 'settings_load() ERROR load portfolio\n', err);
-					console.log('portfolio: ', data);
+					console.error('portfolio: ', data);
 					//msg('settings_load() ERROR load portfolio\n'+JSON.stringify(err, null, 4));
 				}
 
@@ -231,7 +231,7 @@ function settings_load(cb){
 						data_indicators = JSON.parse(data.toString());
 					}else{
 						console.error(func.dateYmdHis(), 'settings_load() ERROR load indicators\n', err);
-						console.log('indicators: ', data);
+						console.error('indicators: ', data);
 						//msg('settings_load() ERROR load indicators\n'+JSON.stringify(err, null, 4));
 					}
 
@@ -328,6 +328,8 @@ function msg_portfolio(){
 				((disabled_list.length)?'\n\nВыключено:\n'+disabled_list.join('\n'):'') +
 				''
 			);
+
+			orders_lookup();
 		}
 	});
 }
@@ -382,7 +384,7 @@ function orders_lookup(){
 				}
 			});
 		}else{
-			console.log('orders_lookup() err', err, 'req_body', JSON.stringify(req_body, null, 4));
+			console.error('orders_lookup() err', err, 'req_body', JSON.stringify(req_body, null, 4));
 		}
 	});
 }
@@ -422,6 +424,7 @@ function query_buy(clientOrderId, securityBoard, securityCode, lots, price, cb){
 
 	redisClient.publish('fstream-cmd', JSON.stringify({
 		cmd: 'NewOrder',
+		clientId: account.account_id,
 		securityBoard: securityBoard,
 		securityCode: securityCode,
 		clientOrderId: clientOrderId,
@@ -438,120 +441,118 @@ function ticker_buy(securityBoard, securityCode, price, interval, force_buy, com
 	const ticker = watch_tickers[securityCode];
 	console.log(func.dateYmdHis(), 'ticker_buy()', ticker.symbol, price, interval, 'force_buy', force_buy);
 
-	if (!settings.stop_buy && !ticker.stop_buy){
-		if (market_is_open(ticker) || force_buy){
-			if (!portfolio[securityCode]) portfolio[securityCode] = {symbol: ticker.symbol, positions: {}};
+	if (market_is_open(ticker) || force_buy){
+		if (!portfolio[securityCode]) portfolio[securityCode] = {symbol: ticker.symbol, positions: {}};
 
-			const position_keys = Object.keys(portfolio[securityCode].positions);
-			if (position_keys.length < settings.max_positions){
-				let buy_price;
-				if (price){ // цена указана вручную
-					buy_price = price;
-				}else{
-					buy_price = ticker.buy_price;
+		const position_keys = Object.keys(portfolio[securityCode].positions);
+		if (position_keys.length < settings.max_positions){
+			let buy_price;
+			if (price){ // цена указана вручную
+				buy_price = price;
+			}else{
+				buy_price = ticker.buy_price;
+			}
+			const minstep = ticker.minStep / Math.pow(10, ticker.decimals);
+			buy_price = func.correctFloat(Math.ceil(buy_price / minstep) * minstep); // округление до шага цены инструмента
+
+
+			// поискать позиции, купленные по такой же цене +- min_price_offset
+			let cancel = false; // не покупать
+			position_keys.forEach(function(timestamp){
+				const position = portfolio[securityCode].positions[timestamp];
+				if (position.interval===interval){
+					if (Math.abs(buy_price-position.buy_price)/position.buy_price*100 < settings.min_price_offset) cancel = true; // совпадение по buy_price
 				}
-				const minstep = ticker.minStep / Math.pow(10, ticker.decimals);
-				buy_price = func.correctFloat(Math.ceil(buy_price / minstep) * minstep); // округление до шага цены инструмента
+			});
 
+			if (!cancel){
+				// подсчитать количество и лоты
+				const max_pos = ticker.currency==='RUB' ? settings.max_position.RUB : settings.max_position.USD;
+				let lots = Math.floor( max_pos / (ticker.lotSize * buy_price)) || 1;
+				let quantity = lots * ticker.lotSize;
 
-				// поискать позиции, купленные по такой же цене +- min_price_offset
-				let cancel = false; // не покупать
-				position_keys.forEach(function(timestamp){
-					const position = portfolio[securityCode].positions[timestamp];
-					if (position.interval===interval){
-						if (Math.abs(buy_price-position.buy_price)/position.buy_price*100 < settings.min_price_offset) cancel = true; // совпадение по buy_price
-					}
-				});
+				// Проверка баланса
+				if ((ticker.currency==='RUB' ? settings.balance.RUB : settings.balance.USD) > buy_price*quantity){
+					const dateObj = new Date();
+					const timestamp = dateObj.getTime();
+					const position = {clientOrderId: timestamp, securityBoard: securityBoard, securityCode: securityCode, time: timestamp, date: func.dateYmdHis(), interval: interval, lots: lots, quantity: quantity, buy_price: buy_price, stop_loss: func.round(buy_price + buy_price / 100 * (ticker.stop_loss || settings.stop_loss), ticker.decimals || 2), buy_in_progress: timestamp, comment: comment || '', buy_comment: comment || ''};
+					portfolio[securityCode].positions[position.time] = position;
 
-				if (!cancel){
-					// подсчитать количество и лоты
-					const max_pos = ticker.currency==='RUB' ? settings.max_position.RUB : settings.max_position.USD;
-					let lots = Math.floor( max_pos / (ticker.lotSize * buy_price)) || 1;
-					let quantity = lots * ticker.lotSize;
-
-					// Проверка баланса
-					if ((ticker.currency==='RUB' ? settings.balance.RUB : settings.balance.USD) > buy_price*quantity){
-						const dateObj = new Date();
-						const timestamp = dateObj.getTime();
-						const position = {clientOrderId: timestamp, securityBoard: securityBoard, securityCode: securityCode, time: timestamp, date: func.dateYmdHis(), interval: interval, lots: lots, quantity: quantity, buy_price: buy_price, stop_loss: func.round(buy_price + buy_price / 100 * (ticker.stop_loss || settings.stop_loss), ticker.decimals || 2), buy_in_progress: timestamp, comment: comment || '', buy_comment: comment || ''};
-						portfolio[securityCode].positions[position.time] = position;
-
-						if (!production){
-							msg_bought(timestamp, securityCode, position);
-							delete position.buy_in_progress;
-						}else{
-							query_buy(timestamp, securityBoard, securityCode, position.lots, position.buy_price, function(err, req_body){
-								msg(
-									'Покупаю '+position.quantity+' #'+ticker.symbol+' *'+position.buy_price+'* '+interval+'\n'+
-									func.markdown_escape(position.comment)
-								);
-
-								/*if (!err && req_body && req_body.data && req_body.data.transactionId){
-									position.id = req_body.data.transactionId;
-									console.log(func.dateYmdHis(), 'Limit-Buy', position.quantity, ticker.symbol, position.buy_price, interval);
-									//setTimeout(orders_lookup, 999, true);
-									ticker.buy_tries = 0;
-								}else{
-									const clear = function(){
-										delete portfolio[securityCode].positions[position.time]; // удалить позицию
-									};
-
-									if ((err && err.code==='ESOCKETTIMEDOUT') || !req_body){
-										ticker.buy_tries = (ticker.buy_tries || 0) + 1;
-										if (ticker.buy_tries < 10){
-											setTimeout(ticker_buy, 33333, securityBoard, securityCode, price, interval, force_buy, comment);
-										}
-										clear();
-									}else{
-										console.error(func.dateYmdHis(), 'Error buy', position.quantity, ticker.symbol, 'price', position.buy_price, interval, 'limit_down', ticker.limit_down, 'limit_up', ticker.limit_up);
-										console.error('position', position);
-										msg(
-											'*Error buy* '+position.quantity+' #'+ticker.symbol+' ('+position.buy_price+') '+interval+'\n'+
-											func.dateYmdHis()+'\n'+
-											func.markdown_escape(JSON.stringify({err:err, req_body:req_body}, null, 4))+'\n'
-										);
-										setTimeout(clear, 3333);
-									}
-								}*/
-							});
-						}
-
+					if (!production){
+						msg_bought(timestamp, securityCode, position);
+						delete position.buy_in_progress;
 					}else{
-						console.error(func.dateYmdHis(), 'Cancel buy', quantity, ticker.symbol, buy_price, interval, 'out of balance');
-						if (!ticker.msg_nsf || ticker.msg_nsf < Date.now() - 1000*3600*6){ // 6 hours
-							ticker.msg_nsf = Date.now();
+						query_buy(timestamp, securityBoard, securityCode, position.lots, position.buy_price, function(err, req_body){
 							msg(
-								'*Покупка* '+quantity+' #'+ticker.symbol+' '+buy_price+' '+interval+'\n'+
-								'Недостаточно средств.'
+								'Покупаю '+position.quantity+' #'+ticker.symbol+' *'+position.buy_price+'* '+interval+'\n'+
+								func.markdown_escape(position.comment)
 							);
-						}
+
+							/*if (!err && req_body && req_body.data && req_body.data.transactionId){
+								position.id = req_body.data.transactionId;
+								console.log(func.dateYmdHis(), 'Limit-Buy', position.quantity, ticker.symbol, position.buy_price, interval);
+								//setTimeout(orders_lookup, 999, true);
+								ticker.buy_tries = 0;
+							}else{
+								const clear = function(){
+									delete portfolio[securityCode].positions[position.time]; // удалить позицию
+								};
+
+								if ((err && err.code==='ESOCKETTIMEDOUT') || !req_body){
+									ticker.buy_tries = (ticker.buy_tries || 0) + 1;
+									if (ticker.buy_tries < 10){
+										setTimeout(ticker_buy, 33333, securityBoard, securityCode, price, interval, force_buy, comment);
+									}
+									clear();
+								}else{
+									console.error(func.dateYmdHis(), 'Error buy', position.quantity, ticker.symbol, 'price', position.buy_price, interval, 'limit_down', ticker.limit_down, 'limit_up', ticker.limit_up);
+									console.error('position', position);
+									msg(
+										'*Error buy* '+position.quantity+' #'+ticker.symbol+' ('+position.buy_price+') '+interval+'\n'+
+										func.dateYmdHis()+'\n'+
+										func.markdown_escape(JSON.stringify({err:err, req_body:req_body}, null, 4))+'\n'
+									);
+									setTimeout(clear, 3333);
+								}
+							}*/
+						});
 					}
 
 				}else{
-					/*console.error(func.dateYmdHis(), 'Cancel buy', ticker.symbol, buy_price, interval, 'same price');
-					msg(
-						'*Сигнал на покупку* #'+ticker.symbol+' '+interval+'\n'+
-						'Есть позиция в рамках '+settings.min_price_offset+'% от текущей цены.'
-					);*/
+					console.error(func.dateYmdHis(), 'Cancel buy', quantity, ticker.symbol, buy_price, interval, 'out of balance');
+					if (!ticker.msg_nsf || ticker.msg_nsf < Date.now() - 1000*3600*6){ // 6 hours
+						ticker.msg_nsf = Date.now();
+						msg(
+							'*Покупка* '+quantity+' #'+ticker.symbol+' '+buy_price+' '+interval+'\n'+
+							'Недостаточно средств.'
+						);
+					}
 				}
 
 			}else{
-				console.error(func.dateYmdHis(), 'Cancel buy', ticker.symbol, interval, 'out of limit');
+				/*console.error(func.dateYmdHis(), 'Cancel buy', ticker.symbol, buy_price, interval, 'same price');
 				msg(
-					'*Сигнал на покупку* #'+ticker.symbol+' '+interval+'\n'+
-					'Достигнут лимит по инструменту.'
-				);
+					'Сигнал на *покупку* #'+ticker.symbol+' '+interval+'\n'+
+					'Есть позиция в рамках '+settings.min_price_offset+'% от текущей цены.'
+				);*/
 			}
 
 		}else{
-
-			/*console.error(func.dateYmdHis(), 'Cancel buy', ticker.symbol, interval, 'disabled OR market closed');
+			console.error(func.dateYmdHis(), 'Cancel buy', ticker.symbol, interval, 'out of limit');
 			msg(
 				'Сигнал на *покупку* #'+ticker.symbol+' '+interval+'\n'+
-				'Сессия закрыта.'
-			);*/
-
+				'Достигнут лимит по инструменту.'
+			);
 		}
+
+	}else{
+
+		/*console.error(func.dateYmdHis(), 'Cancel buy', ticker.symbol, interval, 'disabled OR market closed');
+		msg(
+			'Сигнал на *покупку* #'+ticker.symbol+' '+interval+'\n'+
+			'Сессия закрыта.'
+		);*/
+
 	}
 }
 
@@ -616,6 +617,7 @@ function query_sell(clientOrderId, securityBoard, securityCode, lots, price, cb)
 
 	redisClient.publish('fstream-cmd', JSON.stringify({
 		cmd: 'NewOrder',
+		clientId: account.account_id,
 		securityBoard: securityBoard,
 		securityCode: securityCode,
 		clientOrderId: clientOrderId,
@@ -632,95 +634,93 @@ function ticker_sell(securityBoard, securityCode, price, interval, force_sell, c
 	const ticker = watch_tickers[securityCode];
 	//console.log(func.dateYmdHis(), 'ticker_sell()', ticker.symbol, price, interval, 'force_sell', force_sell);
 
-	if (!settings.stop_sell && !ticker.stop_sell){
-		if (market_is_open(ticker) || force_sell){
-			let sell_price;
-			if (price){ // цена указана вручную
-				sell_price = price;
-			}else{ // встречная
-				sell_price = ticker.sell_price;
-			}
+	if (market_is_open(ticker) || force_sell){
+		let sell_price;
+		if (price){ // цена указана вручную
+			sell_price = price;
+		}else{ // встречная
+			sell_price = ticker.sell_price;
+		}
 
-			if (portfolio[securityCode] && portfolio[securityCode].positions){
-				Object.keys(portfolio[securityCode].positions).forEach(function(position_key){
-					const position = portfolio[securityCode].positions[position_key];
-					if (!position.buy_in_progress && !position.sell_in_progress){
-						const profit_percent = (sell_price - position.buy_price) / position.buy_price * 100;
-						if (!force_sell){ // если цена не указана вручную
-							position.stop_loss = Math.max(position.stop_loss, func.round(sell_price + sell_price / 100 * (ticker.stop_loss || settings.stop_loss), ticker.decimals || 2)); // trailing stop
-						}
+		if (portfolio[securityCode] && portfolio[securityCode].positions){
+			Object.keys(portfolio[securityCode].positions).forEach(function(position_key){
+				const position = portfolio[securityCode].positions[position_key];
+				if (!position.buy_in_progress && !position.sell_in_progress){
+					const profit_percent = (sell_price - position.buy_price) / position.buy_price * 100;
+					if (!force_sell){ // если цена не указана вручную
+						position.stop_loss = Math.max(position.stop_loss, func.round(sell_price + sell_price / 100 * (ticker.stop_loss || settings.stop_loss), ticker.decimals || 2)); // trailing stop
+					}
 
-						if (profit_percent >= Math.min(ticker.take_profit || settings.take_profit, settings.take_profit)
-							|| profit_percent <= Math.max(ticker.stop_loss || settings.stop_loss, settings.stop_loss)
-							|| sell_price <= position.stop_loss // trailing stop
-							|| force_sell
-						){
-							interval = position.interval;
-							position.sell_in_progress = Date.now();
-							position.comment = ((position.comment || '') + '\n' + (comment || '')).trim();
-							position.sell_comment = comment || '';
+					if (profit_percent >= Math.min(ticker.take_profit || settings.take_profit, settings.take_profit)
+						|| profit_percent <= Math.max(ticker.stop_loss || settings.stop_loss, settings.stop_loss)
+						|| sell_price <= position.stop_loss // trailing stop
+						|| force_sell
+					){
+						interval = position.interval;
+						position.sell_in_progress = Date.now();
+						position.comment = ((position.comment || '') + '\n' + (comment || '')).trim();
+						position.sell_comment = comment || '';
 
-							if (sell_price <= position.stop_loss) sell_price = position.stop_loss; // stop-limit
-							const minstep = ticker.minStep / Math.pow(10, ticker.decimals);
-							sell_price = func.correctFloat(Math.floor(sell_price / minstep) * minstep); // округление до шага цены инструмента
-							position.sell_price = sell_price;
+						if (sell_price <= position.stop_loss) sell_price = position.stop_loss; // stop-limit
+						const minstep = ticker.minStep / Math.pow(10, ticker.decimals);
+						sell_price = func.correctFloat(Math.floor(sell_price / minstep) * minstep); // округление до шага цены инструмента
+						position.sell_price = sell_price;
 
-							if (!production){
-								msg_sold(position.sell_in_progress, securityCode, func.mergeDeep({}, position));
-								delete portfolio[securityCode].positions[position_key];
-							}else{
-								query_sell(position_key, securityBoard, securityCode, position.lots, position.sell_price, function(err, req_body){
-									msg(
-										'Продаю '+position.quantity+' #'+ticker.symbol+' *'+position.sell_price+'* '+position.interval+'\n'+
-										func.markdown_escape(position.comment)
-									);
+						if (!production){
+							msg_sold(position.sell_in_progress, securityCode, func.mergeDeep({}, position));
+							delete portfolio[securityCode].positions[position_key];
+						}else{
+							query_sell(position_key, securityBoard, securityCode, position.lots, position.sell_price, function(err, req_body){
+								msg(
+									'Продаю '+position.quantity+' #'+ticker.symbol+' *'+position.sell_price+'* '+position.interval+'\n'+
+									func.markdown_escape(position.comment)
+								);
 
-									/*if (!err && req_body && req_body.data && req_body.data.transactionId){
-										position.id = req_body.data.transactionId;
-										console.log(func.dateYmdHis(), 'Limit-Sell', position.quantity, ticker.symbol, position.sell_price, position.interval);
+								/*if (!err && req_body && req_body.data && req_body.data.transactionId){
+									position.id = req_body.data.transactionId;
+									console.log(func.dateYmdHis(), 'Limit-Sell', position.quantity, ticker.symbol, position.sell_price, position.interval);
 
-										//setTimeout(orders_lookup, 999, true);
-										ticker.sell_tries = 0;
-									}else{
-										const clear = function(){
-											delete position.sell_in_progress; // убрать флажок
-											delete position.force_sell; // убрать флажок
-											delete position.sell_price; // убрать флажок
-										};
+									//setTimeout(orders_lookup, 999, true);
+									ticker.sell_tries = 0;
+								}else{
+									const clear = function(){
+										delete position.sell_in_progress; // убрать флажок
+										delete position.force_sell; // убрать флажок
+										delete position.sell_price; // убрать флажок
+									};
 
-										if ((err && err.code==='ESOCKETTIMEDOUT') || !req_body){
-											ticker.sell_tries = (ticker.sell_tries || 0) + 1;
-											if (ticker.sell_tries < 10){
-												setTimeout(ticker_sell, 33333, securityBoard, securityCode, price, interval, force_sell, comment);
-											}
-											clear();
-										}else{
-											console.error(func.dateYmdHis(), 'Error sell', position.quantity, ticker.symbol, 'price', position.sell_price, position.interval, 'limit_down', ticker.limit_down, 'limit_up', ticker.limit_up);
-											console.error('position', position);
-											msg(
-												'*Error* sell '+position.quantity+' #'+ticker.symbol+' ('+position.sell_price+') '+position.interval+'\n'+
-												func.markdown_escape(JSON.stringify({err:err, req_body:req_body}, null, 4))+'\n'+
-												func.dateYmdHis()
-											);
-											setTimeout(clear, 3333); // 3 сек
+									if ((err && err.code==='ESOCKETTIMEDOUT') || !req_body){
+										ticker.sell_tries = (ticker.sell_tries || 0) + 1;
+										if (ticker.sell_tries < 10){
+											setTimeout(ticker_sell, 33333, securityBoard, securityCode, price, interval, force_sell, comment);
 										}
-									}*/
-								});
-							}
+										clear();
+									}else{
+										console.error(func.dateYmdHis(), 'Error sell', position.quantity, ticker.symbol, 'price', position.sell_price, position.interval, 'limit_down', ticker.limit_down, 'limit_up', ticker.limit_up);
+										console.error('position', position);
+										msg(
+											'*Error* sell '+position.quantity+' #'+ticker.symbol+' ('+position.sell_price+') '+position.interval+'\n'+
+											func.markdown_escape(JSON.stringify({err:err, req_body:req_body}, null, 4))+'\n'+
+											func.dateYmdHis()
+										);
+										setTimeout(clear, 3333); // 3 сек
+									}
+								}*/
+							});
 						}
 					}
-				});
-			}
-
-		}else{
-
-			/*console.error(func.dateYmdHis(), 'Cancel sell', ticker.symbol, interval, 'disabled OR market closed');
-			msg(
-				'Сигнал на *продажу* #'+ticker.symbol+' '+(interval||'')+'\n'+
-				'Сессия закрыта.'
-			);*/
-
+				}
+			});
 		}
+
+	}else{
+
+		/*console.error(func.dateYmdHis(), 'Cancel sell', ticker.symbol, interval, 'disabled OR market closed');
+		msg(
+			'Сигнал на *продажу* #'+ticker.symbol+' '+(interval||'')+'\n'+
+			'Сессия закрыта.'
+		);*/
+
 	}
 }
 
@@ -799,7 +799,7 @@ function update_indicators(candle, no_signals){
 		ema26.addPoint(candle.timestamp, candle.c);
 		vars.ema26 = ema26.getVars();
 
-		if (vars.ema12.EMAvalue && vars.ema26.EMAvalue){
+		if (vars.ema12.EMAvalue && vars.ema26.EMAvalue){ // посчитались быстрые Ema
 			const macd_fast = vars.ema12.EMAvalue-vars.ema26.EMAvalue;
 			// EMA 9
 			const ema9 = new func.EMA(9, vars.ema9);
@@ -807,43 +807,44 @@ function update_indicators(candle, no_signals){
 			vars.ema9 = ema9.getVars();
 			const macd_slow = vars.ema9.EMAvalue;
 
-			if (macd_slow && prev_ema200 && vars.ema200.EMAvalue){ // посчитались MacD и медленная Ema
-				if (prev_ema200 < vars.ema200.EMAvalue){
-					const price_close = (candle.c-vars.ema200.EMAvalue)/vars.ema200.EMAvalue*100;
-					if (prev_ema12 && prev_ema26 && prev_macd_slow){
-						const prev_macd_fast = prev_ema12-prev_ema26;
-						if (prev_macd_fast < prev_macd_slow && macd_fast > macd_slow && macd_fast < 0 && macd_slow < 0){
-							if (price_close <= ticker.candles[candle.interval][1]){
-								// buy
-								vars.last_signal = 'buy';
-								vars.last_signal_at = func.dateYmdHis();
-								if (!no_signals){
-									if (!settings.stop_buy && !ticker.stop_buy){
-										ticker_buy(ticker.securityBoard, ticker.securityCode, ticker.buy_price, candle.interval, false);
-									}else{
-										msg(
-											'Сигнал на *покупку* #'+ticker.symbol+' *'+ticker.buy_price+'* '+candle.interval+'\n'+
-											'Выключена покупка'
-										);
+			if (prev_ema200 && vars.ema200.EMAvalue){ // посчитались Ema
+				if (macd_slow){ // посчитался MacD
+					if (prev_ema200 < vars.ema200.EMAvalue){ // растущая 200-я
+						if (prev_ema12 && prev_ema26 && prev_macd_slow){
+							const prev_macd_fast = prev_ema12-prev_ema26;
+							if (prev_macd_fast < prev_macd_slow && macd_slow < macd_fast && macd_fast < 0 && macd_slow < 0){ // пересечение по MacD ниже оси 0
+								if ((candle.c-vars.ema200.EMAvalue)/vars.ema200.EMAvalue*100 <= ticker.candles[candle.interval][1]){ // цена закрытия не выше медленной Ema на устрановленный %
+									// buy
+									vars.last_signal = 'buy';
+									vars.last_signal_at = func.dateYmdHis();
+									if (!no_signals){
+										if (!settings.stop_buy && !ticker.stop_buy){
+											ticker_buy(ticker.securityBoard, ticker.securityCode, ticker.buy_price, candle.interval, false);
+										}else{
+											msg(
+												'Сигнал на *покупку* #'+ticker.symbol+' *'+ticker.buy_price+'* '+candle.interval+'\n'+
+												'Выключена покупка'
+											);
+										}
 									}
 								}
 							}
 						}
 					}
-				}
 
-				// sell
-				if (0){ // здесь можно придумать условия, при выполнении которых возникнет сигнал на продажу; а пока что продажа происходит по СЛ и ТП
-					vars.last_signal = 'sell';
-					vars.last_signal_at = func.dateYmdHis();
-					if (!no_signals){
-						if (!settings.stop_sell && !ticker.stop_sell){
-							ticker_sell(ticker.securityBoard, ticker.securityCode, ticker.sell_price, candle.interval, false);
-						}else{
-							msg(
-								'Сигнал на *продажу* #'+ticker.symbol+' *'+ticker.sell_price+'* '+candle.interval+'\n'+
-								'Выключена продажа'
-							);
+					// sell
+					if (0){ // здесь можно придумать условия, при выполнении которых возникнет сигнал на продажу; а пока что продажа происходит по СЛ и ТП
+						vars.last_signal = 'sell';
+						vars.last_signal_at = func.dateYmdHis();
+						if (!no_signals){
+							if (!settings.stop_sell && !ticker.stop_sell){
+								ticker_sell(ticker.securityBoard, ticker.securityCode, ticker.sell_price, candle.interval, false);
+							}else{
+								msg(
+									'Сигнал на *продажу* #'+ticker.symbol+' *'+ticker.sell_price+'* '+candle.interval+'\n'+
+									'Выключена продажа'
+								);
+							}
 						}
 					}
 				}
@@ -864,14 +865,14 @@ setTimeout(function(){
 				Object.keys(ticker.candles).forEach(function(interval){
 					const interval_minutes = func.interval_to_minutes(interval);
 					if ((hours*60+minutes)%interval_minutes===0){
-						get_candles(ticker.securityBoard, ticker.securityCode, {timeFrame: 'INTRADAYCANDLE_TIMEFRAME_M15', count: 1}, function(err, resp){
+						get_candles(ticker.securityBoard, ticker.securityCode, {timeFrame: func.get_timeframe_id(interval), count: 1}, function(err, resp){
 							if (!err && resp && resp.length){
-								const candles = resp.map(function(candle){return {security_code: ticker.securityCode, interval: '15min', timestamp: candle.timestamp.seconds*1000, time: new Date(candle.timestamp.seconds*1000).toISOString(), o: func.scientific2decimal(candle.open), h: func.scientific2decimal(candle.high), l: func.scientific2decimal(candle.low), c: func.scientific2decimal(candle.close), v: candle.volume}});
-								event_candle({candle:candles.pop()});
+								const candle = resp.pop();
+								event_candle({candle:{security_code: ticker.securityCode, interval: interval, timestamp: candle.timestamp.seconds*1000, time: new Date(candle.timestamp.seconds*1000).toISOString(), o: func.scientific2decimal(candle.open), h: func.scientific2decimal(candle.high), l: func.scientific2decimal(candle.low), c: func.scientific2decimal(candle.close), v: candle.volume}});
 							}else{
-								console.log(func.dateYmdHis(), 'get_candles()', securityCode, interval);
-								console.log('err', err);
-								console.log('resp', resp);
+								console.error(func.dateYmdHis(), 'get_candles()', securityCode, interval);
+								console.error('err', err);
+								console.error('resp', resp);
 							}
 						});
 					}
@@ -891,6 +892,11 @@ function event_candle(data){
 			update_indicators(data.candle);
 			vars.last_candle = data.candle;
 		}
+	}
+
+	const ticker = watch_tickers[data.candle.security_code];
+	if (!settings.stop_sell && !ticker.stop_sell){
+		ticker_sell(ticker.securityBoard, ticker.securityCode, data.candle.c, null, false);
 	}
 }
 
@@ -922,9 +928,9 @@ function get_securities(cb){
 						cb(null, req_body.data.securities);
 					});
 				}else{
-					console.log(func.dateYmdHis(), 'get_securities()');
-					console.log('err', err);
-					console.log('req_body', req_body);
+					console.error(func.dateYmdHis(), 'get_securities()');
+					console.error('err', err);
+					console.error('req_body', req_body);
 					msg('Не удалось получить список инструментов');
 				}
 			});
@@ -1010,19 +1016,23 @@ redisSub.on('message', function(channel, data){
 									    }
 									    ticker_init(ticker.board, ticker.code);
 									    added_count++;
-									    get_candles(ticker.board, ticker.code, {timeFrame: 'INTRADAYCANDLE_TIMEFRAME_M15', count: 333}, function(err, resp){
+									    get_candles(ticker.board, ticker.code, {timeFrame: func.get_timeframe_id(Object.keys(watch_tickers[ticker.code].candles)[0]), count: 333}, function(err, resp){
 										    if (!err && resp && resp.length){
-											    resp.pop();
 										    	console.log('resp.length', resp.length);
-										    	console.log(resp[0]);
-										    	console.log(resp[resp.length-1]);
-											    resp.map(function(candle, i){return {security_code: ticker.code, interval: '15min', timestamp: candle.timestamp.seconds*1000, time: new Date(candle.timestamp.seconds*1000).toISOString(), o: func.scientific2decimal(candle.open), h: func.scientific2decimal(candle.high), l: func.scientific2decimal(candle.low), c: func.scientific2decimal(candle.close), v: candle.volume}}).forEach(function(candle){
-												    update_indicators(candle, true);
+										    	console.log('first candle', resp[0]);
+										    	console.log('last candle', resp[resp.length-1]);
+											    const interval = Object.keys(watch_tickers[ticker.code].candles)[0], vars = data_indicators[ticker.code] && data_indicators[ticker.code][interval];
+											    if (resp[resp.length-1].timestamp.seconds*1000+func.interval_to_minutes(interval)*60*1000>Date.now()){ // незавершённая свеча
+												    resp.pop();
+											    }
+											    resp.forEach(function(candle){
+												    vars.last_candle = {security_code: ticker.code, interval: interval, timestamp: candle.timestamp.seconds*1000, time: new Date(candle.timestamp.seconds*1000).toISOString(), o: func.scientific2decimal(candle.open), h: func.scientific2decimal(candle.high), l: func.scientific2decimal(candle.low), c: func.scientific2decimal(candle.close), v: candle.volume};
+												    update_indicators(vars.last_candle, true);
 											    });
 										    }else{
-											    console.log(func.dateYmdHis(), 'get_candles()', ticker.code);
-											    console.log('err', err);
-											    console.log('resp', resp);
+											    console.error(func.dateYmdHis(), 'get_candles()', ticker.code);
+											    console.error('err', err);
+											    console.error('resp', resp);
 										    }
 									    });
 								    }
@@ -1449,7 +1459,7 @@ redisSub.on('message', function(channel, data){
 							Object.keys(portfolio).forEach(function(symbol){ // найти все купленные инструменты
 								if (portfolio[symbol].positions){
 									const ticker = watch_tickers[symbol];
-									if (ticker){
+									if (ticker && !ticker.stop_sell){
 										if (data.option==='*' || (data.option==='rub' && ticker.currency==='RUB') || (data.option==='usd' && ticker.currency!=='RUB')){
 											Object.keys(portfolio[symbol].positions).forEach(function(position_key){
 												const position = portfolio[symbol].positions[position_key];
@@ -1471,7 +1481,7 @@ redisSub.on('message', function(channel, data){
 							Object.keys(portfolio).forEach(function(symbol){ // найти все купленные инструменты
 								if (portfolio[symbol].positions){
 									const ticker = watch_tickers[symbol];
-									if (ticker){
+									if (ticker && !ticker.stop_sell){
 										Object.keys(portfolio[symbol].positions).forEach(function(position_key){ // найти позицию с доходом >= data.percent
 											const position = portfolio[symbol].positions[position_key];
 											if (!position.buy_in_progress && !position.sell_in_progress){

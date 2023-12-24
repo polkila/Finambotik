@@ -1,2 +1,20 @@
 {
+	"SBER": {
+		"symbol": "SBER",
+		"securityCode": "SBER",
+		"securityBoard": "TQBR",
+		"name": "Sberbank",
+		"lotSize": 10,
+		"currency": "RUB",
+		"decimals": 2,
+		"minStep": 1,
+		"candles": {
+			"15min": [
+				200,
+				1.2
+			]
+		},
+		"quantity": 0,
+		"stop_buy": true
+	}
 }

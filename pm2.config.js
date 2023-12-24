@@ -4,7 +4,7 @@ module.exports = {
 			name: 'telegram',
 			script: 'telegram.js',
 			max_memory_restart: '256M',
-			cron_restart: '49 9 * * *',
+			cron_restart: '55 9,18,23 * * *',
 			listen_timeout: 3*60*1000,
 			kill_timeout: 60*1000,
 			env: {

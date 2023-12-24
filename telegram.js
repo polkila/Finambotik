@@ -234,7 +234,8 @@ redisSub.on('message', function(channel, data){
 					bot_queue_add(chat_id, function(){
 						return bot.sendMessage(chat_id, text, {
 							parseMode: 'Markdown',
-							webPreview: false
+							webPreview: false,
+							notification: new Date().getHours()>=9,
 						}).catch(function(e){
 							console.error(func.dateYmdHis(), e, data);
 						});
